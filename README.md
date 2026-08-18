@@ -22,9 +22,11 @@ import { VerovioToolkit } from "npm:verovio";
 ```
 
 ```js
-show.play(piece,  { Tone, io, sound });
-show.score(piece, { io, verovio, VerovioToolkit });
-show.wav(piece,   { Tone, io, sound, filename: "piece.wav" });
+show.play(piece, { Tone, io, sound });
+
+// These two render before they can hand back anything, so both are promises.
+await show.score(piece, { io, verovio, VerovioToolkit });
+await show.wav(piece, { Tone, io, sound, filename: "piece.wav" });
 ```
 
 Alongside the other three, [`jmon/studio`](https://github.com/jmonlabs/studio)
