@@ -27,6 +27,10 @@ show.score(piece, { io, verovio, VerovioToolkit });
 show.wav(piece,   { Tone, io, sound, filename: "piece.wav" });
 ```
 
+Alongside the other three, [`jmon/studio`](https://github.com/jmonlabs/studio)
+assembles all four and binds the injections, so these become `jm.play(piece)`,
+`jm.score(piece)` and `jm.wav(piece)`.
+
 ## Why things are passed in
 
 Node refuses `https://` imports, and these modules are tested under Node. So a
