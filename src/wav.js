@@ -39,7 +39,7 @@ export function wav(piece, options = {}) {
  *
  * @example
  * import * as Tone from "npm:tone@14.7.77";
- * await jm.converters.downloadWav(piece, Tone, "my-song.wav");
+ * await jm.wav(piece, { filename: "my-song.wav" });
  */
 export async function downloadWav(piece, Tone, filename = "piece.wav", duration, options = {}) {
 	normalizeAudioGraph(piece);

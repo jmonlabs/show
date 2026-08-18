@@ -10,7 +10,7 @@
  *   ...piece.audioGraph.map(n =>
  *     n.target === "destination" ? { ...n, target: "master_lowshelf" } : n
  *   ),
- *   ...jm.audioGraph.master.lush,
+ *   ...jm.master.lush,
  * ];
  * ```
  *
@@ -22,7 +22,7 @@
  * fragment and scale the wet amounts:
  *
  * ```js
- * const subtle = jm.audioGraph.master.lush.map(n =>
+ * const subtle = jm.master.lush.map(n =>
  *   n.options?.wet !== undefined
  *     ? { ...n, options: { ...n.options, wet: n.options.wet * 0.5 } }
  *     : n
