@@ -307,14 +307,14 @@ export function collectHandlers(node, depth = 0, found = []) {
  * Starting is what builds the audio graph and schedules the notes — before the
  * first gesture a player has only built its UI.
  */
-export async function playAndRecord(composition, options = {}) {
+export async function playAndRecord(piece, options = {}) {
   const restore = installFakeBrowser();
   try {
     const { Tone, record } = createFakeTone();
     globalThis.Tone = Tone;
 
     const { createPlayer } = await import("../../src/player.js");
-    const ui = createPlayer(composition, { Tone, io, ...options });
+    const ui = createPlayer(piece, { Tone, io, ...options });
 
     const handlers = collectHandlers(ui);
     const play = handlers.find((h) => typeof h.click === "function");

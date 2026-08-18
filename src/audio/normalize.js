@@ -25,23 +25,23 @@ function capitalizeFirstLetter(str) {
 
 /**
  * Normalize audioGraph format from {nodes: [], connections: []} to flat array with target.
- * Mutates the given composition object in-place for performance.
+ * Mutates the given piece object in-place for performance.
  *
  * Converts from:
  *   audioGraph: { nodes: [...], connections: [{from, to}, ...] }
  * To:
  *   audioGraph: [{ id, type, options, target }, ...]
  *
- * @param {object} composition
- * @returns {object} the same composition object (for chaining)
+ * @param {object} piece
+ * @returns {object} the same piece object (for chaining)
  */
-export function normalizeAudioGraph(composition) {
-  if (!composition || !composition.audioGraph) return composition;
+export function normalizeAudioGraph(piece) {
+  if (!piece || !piece.audioGraph) return piece;
 
-  const ag = composition.audioGraph;
+  const ag = piece.audioGraph;
 
   // If already an array, assume it's in the correct format
-  if (Array.isArray(ag)) return composition;
+  if (Array.isArray(ag)) return piece;
 
   // If it's an object with nodes and connections, convert it
   if (ag.nodes && Array.isArray(ag.nodes)) {
@@ -82,23 +82,23 @@ export function normalizeAudioGraph(composition) {
       flatArray.push({ id: 'destination', type: 'Destination' });
     }
 
-    composition.audioGraph = flatArray;
+    piece.audioGraph = flatArray;
   }
 
-  return composition;
+  return piece;
 }
 
 /**
  * Normalize Sampler urls keys to scientific pitch notation.
- * Mutates the given composition object in-place for performance.
+ * Mutates the given piece object in-place for performance.
  *
- * @param {object} composition
- * @returns {object} the same composition object (for chaining)
+ * @param {object} piece
+ * @returns {object} the same piece object (for chaining)
  */
-export function normalizeSamplerUrlsToNoteNames(composition) {
-  if (!composition || !Array.isArray(composition.audioGraph)) return composition;
+export function normalizeSamplerUrlsToNoteNames(piece) {
+  if (!piece || !Array.isArray(piece.audioGraph)) return piece;
 
-  composition.audioGraph.forEach(node => {
+  piece.audioGraph.forEach(node => {
     try {
       if (!node || node.type !== 'Sampler') return;
       const opts = node.options || {};
@@ -121,5 +121,5 @@ export function normalizeSamplerUrlsToNoteNames(composition) {
       // best-effort normalization; ignore errors
     }
   });
-  return composition;
+  return piece;
 }

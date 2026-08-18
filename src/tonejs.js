@@ -43,8 +43,8 @@ export class Tonejs {
         return 0;
     }
 
-    convert(composition) {
-        const tracks = composition.tracks || [];
+    convert(piece) {
+        const tracks = piece.tracks || [];
         return tracks.map(track => ({
             label: track.label,
             type: 'PolySynth', // Default type for the current player
@@ -61,23 +61,23 @@ export class Tonejs {
 
 import { normalizeAudioGraph, normalizeSamplerUrlsToNoteNames } from './audio/normalize.js';
 
-export function tonejs(composition, options = {}) {
+export function tonejs(piece, options = {}) {
     // Normalize audioGraph format (nodes/connections -> flat array)
     try {
-        normalizeAudioGraph(composition);
+        normalizeAudioGraph(piece);
     } catch (_) {
-        // Ignore normalization errors - composition may not have audioGraph
+        // Ignore normalization errors - piece may not have audioGraph
     }
 
     // Normalize audioGraph Sampler keys to scientific note names (best compatibility)
     try {
-        normalizeSamplerUrlsToNoteNames(composition);
+        normalizeSamplerUrlsToNoteNames(piece);
     } catch (_) {
-        // Ignore normalization errors - composition may not have audioGraph
+        // Ignore normalization errors - piece may not have audioGraph
     }
 
     const converter = new Tonejs(options);
-    const originalTracks = converter.convert(composition);
+    const originalTracks = converter.convert(piece);
 
     // Convert to the format expected by the music player
     const tracks = originalTracks.map((track, index) => ({
@@ -90,8 +90,8 @@ export function tonejs(composition, options = {}) {
     }));
 
     // Compute total duration in seconds using BPM and timeSignature
-    const bpm = composition.tempo || composition.metadata?.tempo || composition.bpm || 120;
-    const [tsNum, tsDen] = (composition.timeSignature || '4/4').split('/').map(x => parseInt(x, 10));
+    const bpm = piece.tempo || piece.metadata?.tempo || piece.bpm || 120;
+    const [tsNum, tsDen] = (piece.timeSignature || '4/4').split('/').map(x => parseInt(x, 10));
     const beatsPerBar = isFinite(tsNum) ? tsNum : 4;
 
     let totalBeats = 0;

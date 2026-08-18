@@ -1,14 +1,14 @@
 /**
  * Headless score rendering.
  *
- * Pure, DOM-free Verovio wrapper that turns a JMON composition into
+ * Pure, DOM-free Verovio wrapper that turns a JMON piece into
  * an SVG string (plus optional MEI and MusicXML). Safe to import from
  * Node, Deno, JSR, and notebook kernels — contains no browser globals.
  *
  * The browser-facing DOM wrapper lives in `./score-renderer.js` and
  * delegates to `scoreSVG()` below.
  *
- * Turning a composition into MusicXML is `jmon/io`'s job, so it is passed
+ * Turning a piece into MusicXML is `jmon/io`'s job, so it is passed
  * in as `options.io` rather than imported: Node refuses `https://` imports.
  */
 
@@ -167,9 +167,9 @@ async function resolveToolkit({ toolkit, verovio, VerovioToolkit, timeoutMs }) {
 }
 
 /**
- * Render a JMON composition to SVG with no DOM dependency.
+ * Render a JMON piece to SVG with no DOM dependency.
  *
- * @param {Object} composition - The JMON composition to render
+ * @param {Object} piece - The JMON piece to render
  * @param {Object} options - Rendering options
  * @param {Function|Object} [options.verovio] - Verovio WASM module factory
  *   (e.g. `import verovio from "npm:verovio@5.6.0/wasm"`)
@@ -197,11 +197,11 @@ async function resolveToolkit({ toolkit, verovio, VerovioToolkit, timeoutMs }) {
  *   so the score fills its container. The `viewBox` is preserved so the
  *   browser computes a proportional height.
  * @returns {Promise<{svg: string, svgs: string[], pages: number, mei: string|null, musicxml: string}>}
- *   `svg` is the first page (for single-page compositions or convenience).
+ *   `svg` is the first page (for single-page pieces or convenience).
  *   `svgs` is the full array of all rendered pages.
  *   `pages` is the page count.
  */
-export async function scoreSVG(composition, options = {}) {
+export async function scoreSVG(piece, options = {}) {
   const {
     verovio,
     VerovioToolkit,
@@ -213,7 +213,7 @@ export async function scoreSVG(composition, options = {}) {
     width = 2100,
     scale = 60,
     breaks = "auto",
-    // `header` and `footer` pull in the composition title / copyright
+    // `header` and `footer` pull in the piece title / copyright
     // area, which adds ~400 vertical units of mostly-empty space. Strip
     // them by default — if the caller wants a title rendered, they can
     // pass `header: "encoded"`.
@@ -231,7 +231,7 @@ export async function scoreSVG(composition, options = {}) {
 
   const vrvToolkit = await resolveToolkit({ toolkit, verovio, VerovioToolkit, timeoutMs });
 
-  const musicXML = requireMusicXML(options.io)(composition);
+  const musicXML = requireMusicXML(options.io)(piece);
 
   vrvToolkit.setOptions({
     scale,
@@ -254,7 +254,7 @@ export async function scoreSVG(composition, options = {}) {
 
   vrvToolkit.loadData(musicXML);
 
-  // Render every page so long compositions aren't silently truncated.
+  // Render every page so long pieces aren't silently truncated.
   // Verovio paginates based on pageWidth + content; a minute of music
   // typically produces 3–10 pages at pageWidth=2100.
   const pageCount =
@@ -290,7 +290,7 @@ function requireMusicXML(io) {
     throw new Error(
       "jmon/show needs jmon/io to build a score.\n\n" +
       '  import io from "https://cdn.jsdelivr.net/gh/jmonlabs/io@main/src/index.js";\n' +
-      "  show.score(composition, { verovio, VerovioToolkit, io });\n\n" +
+      "  show.score(piece, { verovio, VerovioToolkit, io });\n\n" +
       "See https://github.com/jmonlabs/io",
     );
   }

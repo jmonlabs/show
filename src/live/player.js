@@ -41,7 +41,7 @@ try {
   const mod = await import("https://cdn.jsdelivr.net/gh/jmonlabs/io@main/src/index.js");
   io = mod.default || mod;
 } catch (e) {
-  console.error("jmon/io is required to read a composition.", e);
+  console.error("jmon/io is required to read a piece.", e);
   throw e;
 }
 const { tempoSegments, automationChannels, parseAutomationTarget, timeSignatureSegments } = io.format;

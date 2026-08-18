@@ -6,7 +6,7 @@
  * the Deno/Node kernel side. The trick: spawn an iframe whose `srcdoc`
  * loads Tone.js (from a URL the caller provides) and the jmon/algo ESM
  * source (from jsDelivr's GitHub mirror), then calls
- * `jm.play(composition, { Tone })`. Inside the iframe `env.isBrowser()`
+ * `jm.play(piece, { Tone })`. Inside the iframe `env.isBrowser()`
  * is true, so `jm.play()` takes its **browser path** and spawns the full
  * music-player.js UI — no MIDI round-trip, no feature loss.
  *
@@ -34,7 +34,7 @@
  * If you don't want to retype the URL every time, alias it:
  *
  *   const ToneUrl = "https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js";
- *   await jm.play(composition, { Tone: ToneUrl });
+ *   await jm.play(piece, { Tone: ToneUrl });
  */
 
 const JMON_CDN_DEFAULT =
@@ -53,7 +53,7 @@ function escapeAttr(html) {
  * caller provides) plus the jmon/algo ESM source (from jsDelivr by
  * default), and spawns the full browser player inside.
  *
- * @param {Object} composition - The JMON composition
+ * @param {Object} piece - The JMON piece
  * @param {Object} options
  * @param {string} options.Tone - **Required.** URL of a Tone.js script
  *   (UMD or ESM). The iframe loads it into its own browser context.
@@ -65,7 +65,7 @@ function escapeAttr(html) {
  * @param {boolean} [options.autoplay=false] - Start playback immediately
  * @returns {Object} MIME bundle: { text/html, text/plain }
  */
-export function notebookPlayer(composition, options = {}) {
+export function notebookPlayer(piece, options = {}) {
   const {
     Tone: toneUrl,
     height = 160,
@@ -77,7 +77,7 @@ export function notebookPlayer(composition, options = {}) {
     throw new Error(
       "jm.play() in a notebook/headless context requires a Tone.js URL.\n" +
       "Pass it via the `Tone` option:\n" +
-      "  await jm.play(composition, {\n" +
+      "  await jm.play(piece, {\n" +
       '    Tone: "https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"\n' +
       "  });\n" +
       "(In a browser, `Tone` should be a live Tone.js module instead.)"
@@ -90,7 +90,7 @@ export function notebookPlayer(composition, options = {}) {
   const safeOptions = JSON.stringify({
     autoplay,
   });
-  const compositionJson = JSON.stringify(composition);
+  const pieceJson = JSON.stringify(piece);
 
   // The iframe loads Tone.js via a classic <script> tag (Tone's UMD build
   // is what most CDNs serve), then loads jmon/algo as a real ES module
@@ -112,7 +112,7 @@ export function notebookPlayer(composition, options = {}) {
     `<div id="root"></div>` +
     `<script>` +
     `(async () => {` +
-    `  const composition = ${compositionJson};` +
+    `  const piece = ${pieceJson};` +
     `  const options = ${safeOptions};` +
     `  try {` +
     // Wait up to 10s for Tone and jm to show up (CDN scripts are async).
@@ -126,7 +126,7 @@ export function notebookPlayer(composition, options = {}) {
     `    if (!api || typeof api.play !== "function") {` +
     `      throw new Error("jm.play not found on loaded module");` +
     `    }` +
-    `    const player = await api.play(composition, { Tone: window.Tone, ...options });` +
+    `    const player = await api.play(piece, { Tone: window.Tone, ...options });` +
     `    const root = document.getElementById("root");` +
     `    root.innerHTML = "";` +
     `    root.appendChild(player);` +
@@ -146,6 +146,6 @@ export function notebookPlayer(composition, options = {}) {
 
   return {
     "text/html": html,
-    "text/plain": `[player: ${composition.tracks?.length || 0} track(s)]`,
+    "text/plain": `[player: ${piece.tracks?.length || 0} track(s)]`,
   };
 }

@@ -18,31 +18,31 @@ import { requireFormat } from "./format.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 
-export function wav(composition, options = {}) {
+export function wav(piece, options = {}) {
 	return {
 		sampleRate: options.sampleRate || 44100,
 		duration: options.duration || 10,
 		channels: options.channels || 1,
-		tempo: composition.tempo || composition.bpm || 120,
-		notes: composition.tracks?.flatMap(t => t.notes) || []
+		tempo: piece.tempo || piece.bpm || 120,
+		notes: piece.tracks?.flatMap(t => t.notes) || []
 	};
 }
 
 /**
- * Download a WAV file from a JMON composition
+ * Download a WAV file from a JMON piece
  *
- * @param {Object} composition - The JMON composition
+ * @param {Object} piece - The JMON piece
  * @param {Object} Tone - The Tone.js library (import from npm:tone)
- * @param {string} filename - Output filename (default: "composition.wav")
- * @param {number} duration - Duration in seconds (default: auto-calculated from composition)
+ * @param {string} filename - Output filename (default: "piece.wav")
+ * @param {number} duration - Duration in seconds (default: auto-calculated from piece)
  * @returns {Promise<void>}
  *
  * @example
  * import * as Tone from "npm:tone@14.7.77";
- * await jm.converters.downloadWav(composition, Tone, "my-song.wav");
+ * await jm.converters.downloadWav(piece, Tone, "my-song.wav");
  */
-export async function downloadWav(composition, Tone, filename = "composition.wav", duration, options = {}) {
-	normalizeAudioGraph(composition);
+export async function downloadWav(piece, Tone, filename = "piece.wav", duration, options = {}) {
+	normalizeAudioGraph(piece);
 	const sound = options.sound || null;
 	const fmt = requireFormat(options.io);
 
@@ -51,12 +51,12 @@ export async function downloadWav(composition, Tone, filename = "composition.wav
 	// within its callback.
 	if (typeof sound?.prepare === "function") {
 		await sound.prepare(
-			(composition.tracks || []).map(t => resolveSynthPreset(t && t.synth, composition.customPresets)),
+			(piece.tracks || []).map(t => resolveSynthPreset(t && t.synth, piece.customPresets)),
 		);
 	}
 
-	// Calculate duration from composition if not provided
-	const maxTime = composition.tracks?.reduce((max, track) => {
+	// Calculate duration from piece if not provided
+	const maxTime = piece.tracks?.reduce((max, track) => {
 		const events = track.events || track.notes || [];
 		const trackMax = events.reduce((tMax, note) => {
 			const endTime = (note.time || 0) + (note.duration || 0);
@@ -66,7 +66,7 @@ export async function downloadWav(composition, Tone, filename = "composition.wav
 	}, 0) || 4;
 
 	// Convert quarter notes to seconds
-	const tempo = composition.tempo || 120;
+	const tempo = piece.tempo || 120;
 	const secondsPerQuarterNote = 60 / tempo;
 	const calculatedDuration = maxTime * secondsPerQuarterNote + 1; // +1 second buffer
 
@@ -77,11 +77,11 @@ export async function downloadWav(composition, Tone, filename = "composition.wav
 		transport.bpm.value = tempo;
 
 		// Build audioGraph instruments if present
-		const graphInstruments = await buildAudioGraphInstruments(composition, Tone);
+		const graphInstruments = await buildAudioGraphInstruments(piece, Tone);
 
 		// Compile modulations for all tracks
 		const compiledModulations = [];
-		const tracks = composition.tracks || [];
+		const tracks = piece.tracks || [];
 		tracks.forEach((track, index) => {
 			try {
 				const compiled = fmt.compileEvents(track);
@@ -101,7 +101,7 @@ export async function downloadWav(composition, Tone, filename = "composition.wav
 			const trackModulations = compiledModulations[trackIndex] || [];
 
 			const synthRef = track.synthRef;
-			const implicitSynthId = (composition.audioGraph || []).find(
+			const implicitSynthId = (piece.audioGraph || []).find(
 				n => SYNTHESIZER_TYPES.includes(n.type)
 			)?.id;
 			const sharedSynthId = synthRef || implicitSynthId;
@@ -109,13 +109,13 @@ export async function downloadWav(composition, Tone, filename = "composition.wav
 
 			const connectTarget = resolveConnectTarget(
 				track,
-				sharedSynth ? null : composition.audioGraph,
+				sharedSynth ? null : piece.audioGraph,
 				graphInstruments || {},
 				null,
 			);
 
 			const { synth, isLoadable, isShared } = createTrackSynth(
-				track, Tone, sharedSynth, composition.customPresets, sound,
+				track, Tone, sharedSynth, piece.customPresets, sound,
 			);
 			if (isLoadable) samplers.push(synth);
 			if (!isShared) {
@@ -329,11 +329,11 @@ export async function downloadWav(composition, Tone, filename = "composition.wav
 }
 
 /**
- * Build audioGraph instruments from composition
+ * Build audioGraph instruments from piece
  * @private
  */
-async function buildAudioGraphInstruments(composition, Tone) {
-	if (!composition.audioGraph || !Array.isArray(composition.audioGraph)) {
+async function buildAudioGraphInstruments(piece, Tone) {
+	if (!piece.audioGraph || !Array.isArray(piece.audioGraph)) {
 		return null;
 	}
 
@@ -342,7 +342,7 @@ async function buildAudioGraphInstruments(composition, Tone) {
 
 	try {
 		// First pass: Create all nodes
-		composition.audioGraph.forEach((node) => {
+		piece.audioGraph.forEach((node) => {
 			const { id, type, options = {} } = node;
 			if (!id || !type) return;
 
@@ -374,7 +374,7 @@ async function buildAudioGraphInstruments(composition, Tone) {
 		});
 
 		// Second pass: Connect the routing
-		composition.audioGraph.forEach((node) => {
+		piece.audioGraph.forEach((node) => {
 			const { id, target } = node;
 			if (!id || !map[id] || map[id] === Tone.Destination) return;
 

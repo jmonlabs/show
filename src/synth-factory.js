@@ -53,7 +53,7 @@ export function resolveConnectTarget(track, audioGraph, graphNodes, fallbackTarg
  *     not disconnect or reconfigure its routing
  */
 /**
- * Resolve a track's `synth` field against a composition's `customPresets`.
+ * Resolve a track's `synth` field against a piece's `customPresets`.
  *
  * A preset is `{ id, type, options }`. A track referencing it by id — as a
  * bare string or as `{ preset: "id" }` — gets the preset's `{ type, options }`
@@ -128,7 +128,7 @@ export function resolveSynthPreset(synthSpec, presets) {
  * @param {Object} track - A JMON track
  * @param {Object} ToneLib - The Tone.js namespace
  * @param {Object} [sharedSynth] - An audioGraph instrument this track rides on
- * @param {Array} [presets] - composition.customPresets
+ * @param {Array} [presets] - piece.customPresets
  * @param {Object} [sound] - The sampled-instrument provider, or null
  * @returns {{synth: Object, isLoadable: boolean, isShared: boolean}}
  */
@@ -145,8 +145,8 @@ export function createTrackSynth(track, ToneLib, sharedSynth = null, presets = n
   }
   if (wantsSamples(synthSpec) && !sampled) {
     warnOnce(
-      "This composition asks for sampled instruments. Pass a provider — " +
-      "jm.play(composition, { Tone, sound }) — or tracks fall back to a synth. " +
+      "This piece asks for sampled instruments. Pass a provider — " +
+      "jm.play(piece, { Tone, sound }) — or tracks fall back to a synth. " +
       "See https://github.com/jmonlabs/sound",
     );
     return { synth: new ToneLib.PolySynth(), isLoadable: false, isShared: false };

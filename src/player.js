@@ -13,42 +13,42 @@ import {
 
 /**
  * Simplified Music Player - Just playback with articulations
- * No synth selectors, no downloads - focus on playing JMON compositions
+ * No synth selectors, no downloads - focus on playing JMON pieces
  */
-export function createPlayer(composition, options = {}) {
-  if (!composition) {
-    throw new Error("Invalid composition");
+export function createPlayer(piece, options = {}) {
+  if (!piece) {
+    throw new Error("Invalid piece");
   }
 
-  // Normalize: wrap a plain array of MIDI pitches or note objects into a composition
-  if (Array.isArray(composition)) {
-    const notes = composition.map((item, i) =>
+  // Normalize: wrap a plain array of MIDI pitches or note objects into a piece
+  if (Array.isArray(piece)) {
+    const notes = piece.map((item, i) =>
       typeof item === "number"
         ? { pitch: item, duration: 1, time: i }
         : { time: i, duration: 1, ...item }
     );
-    composition = { tracks: [{ notes }], tempo: 120 };
+    piece = { tracks: [{ notes }], tempo: 120 };
   }
 
-  if (typeof composition !== "object") {
-    throw new Error("Invalid composition");
+  if (typeof piece !== "object") {
+    throw new Error("Invalid piece");
   }
 
   const { Tone: externalTone = null, autoplay = false, sound = null, io = null } = options;
 
-  // Reading the composition is jmon/io's job; this package receives it.
+  // Reading the piece is jmon/io's job; this package receives it.
   const fmt = requireFormat(io);
 
-  // Normalize composition structure
-  const tracks = composition.tracks || composition.sequences || [];
+  // Normalize piece structure
+  const tracks = piece.tracks || piece.sequences || [];
   if (!Array.isArray(tracks)) {
     throw new Error("Tracks must be an array");
   }
 
-  const tempo = composition.tempo || composition.bpm || 120;
+  const tempo = piece.tempo || piece.bpm || 120;
 
   // Convert JMON to Tone.js format
-  const convertedData = tonejs(composition, {});
+  const convertedData = tonejs(piece, {});
   const { tracks: convertedTracks, metadata } = convertedData;
   const totalDuration = metadata.totalDuration;
 
@@ -237,13 +237,13 @@ export function createPlayer(composition, options = {}) {
     masterGain = ToneLib.Destination;
 
     // Normalize audioGraph format
-    normalizeAudioGraph(composition);
+    normalizeAudioGraph(piece);
 
     // Build audioGraph nodes if present
     const graphNodes = {};
     graphNodesRef = graphNodes;
-    if (composition.audioGraph && Array.isArray(composition.audioGraph)) {
-      composition.audioGraph.forEach(({ id, type, options: opts = {} }) => {
+    if (piece.audioGraph && Array.isArray(piece.audioGraph)) {
+      piece.audioGraph.forEach(({ id, type, options: opts = {} }) => {
         if (!id || !type) return;
         if (type === 'Destination') { graphNodes[id] = ToneLib.Destination; return; }
         try {
@@ -256,7 +256,7 @@ export function createPlayer(composition, options = {}) {
         }
       });
 
-      composition.audioGraph.forEach(({ id, target }) => {
+      piece.audioGraph.forEach(({ id, target }) => {
         if (!id || !graphNodes[id] || graphNodes[id] === ToneLib.Destination) return;
         const node = graphNodes[id];
         if (target && graphNodes[target]) {
@@ -274,7 +274,7 @@ export function createPlayer(composition, options = {}) {
     // A tempo map means each beat sits at its own rate, so a single
     // secondsPerQN cannot place events — the map has to be integrated.
     // With no tempoMap this collapses to `beats * 60 / tempo`.
-    const segments = fmt.tempoSegments(composition);
+    const segments = fmt.tempoSegments(piece);
     const toSeconds = (beats) => fmt.beatsToSeconds(beats, segments);
     tempoPlan = { segments, toSeconds };
     const secondsPerQN = 60 / tempo;
@@ -283,7 +283,7 @@ export function createPlayer(composition, options = {}) {
     // before any instrument is built. No provider, no work.
     if (typeof sound?.prepare === "function") {
       await sound.prepare(
-        originalTracksSource.map((t) => resolveSynthPreset(t && t.synth, composition.customPresets)),
+        originalTracksSource.map((t) => resolveSynthPreset(t && t.synth, piece.customPresets)),
       );
     }
 
@@ -303,7 +303,7 @@ export function createPlayer(composition, options = {}) {
 
       // Synth + routing via the shared factory (kept identical to wav.js)
       const synthRef = originalTrack.synthRef;
-      const implicitSynthId = (composition.audioGraph || []).find(
+      const implicitSynthId = (piece.audioGraph || []).find(
         n => SYNTHESIZER_TYPES.includes(n.type)
       )?.id;
       const sharedSynthId = synthRef || implicitSynthId;
@@ -311,13 +311,13 @@ export function createPlayer(composition, options = {}) {
 
       const connectTarget = resolveConnectTarget(
         originalTrack,
-        sharedSynth ? null : composition.audioGraph,
+        sharedSynth ? null : piece.audioGraph,
         graphNodes,
         masterGain,
       );
 
       const { synth, isShared } = createTrackSynth(
-        originalTrack, ToneLib, sharedSynth, composition.customPresets, sound,
+        originalTrack, ToneLib, sharedSynth, piece.customPresets, sound,
       );
       if (!isShared) synth.connect(connectTarget);
 
@@ -397,7 +397,7 @@ export function createPlayer(composition, options = {}) {
 
   // ── Schedule events on the transport (cheap — redo on seek) ──────
   /**
-   * Follow the composition's tempoMap.
+   * Follow the piece's tempoMap.
    *
    * Event times are already integrated through the map, so this exists so that
    * Tone's own musical-time parsing (note-value durations, ramp times) and any
@@ -419,7 +419,7 @@ export function createPlayer(composition, options = {}) {
   }
 
   /**
-   * Follow the composition's timeSignatureMap.
+   * Follow the piece's timeSignatureMap.
    *
    * Note placement is unaffected — JMON times are quarter notes, which do not
    * depend on the metre. What this fixes is everything that reads the
@@ -427,7 +427,7 @@ export function createPlayer(composition, options = {}) {
    * musical-time value resolved during playback.
    */
   function scheduleTimeSignatureChanges(toSeconds) {
-    const segments = fmt.timeSignatureSegments(composition);
+    const segments = fmt.timeSignatureSegments(piece);
     if (segments.length === 0) return;
 
     for (const segment of segments) {
@@ -443,7 +443,7 @@ export function createPlayer(composition, options = {}) {
   }
 
   /**
-   * Follow the composition's `automation` channels.
+   * Follow the piece's `automation` channels.
    *
    * A target names a parameter: `"reverb.wet"` addresses a node in the
    * audioGraph, `"track.lead.volume"` a track's own chain, and `"tempo"` the
@@ -454,7 +454,7 @@ export function createPlayer(composition, options = {}) {
    * lane draws between two anchors.
    */
   function scheduleAutomation(toSeconds) {
-    const channels = fmt.automationChannels(composition);
+    const channels = fmt.automationChannels(piece);
     if (channels.length === 0) return;
 
     for (const channel of channels) {
@@ -463,7 +463,7 @@ export function createPlayer(composition, options = {}) {
       if (parsed.kind === "midi") {
         // A control change means nothing on the audio path by itself.
         // converterHints.tone says what it should drive.
-        const hint = fmt.resolveCcHint(parsed.cc, composition);
+        const hint = fmt.resolveCcHint(parsed.cc, piece);
         if (!hint) continue;
         parsed = hint;
         range = hint.range;
@@ -499,7 +499,7 @@ export function createPlayer(composition, options = {}) {
 
     if (parsed.kind === "track") {
       const label = parsed.node || channel.trackId;
-      const index = (composition.tracks || []).findIndex(
+      const index = (piece.tracks || []).findIndex(
         (track, i) => (track.label ?? `track ${i}`) === label,
       );
       const synth = index >= 0 ? trackConfigs[index]?.synth : undefined;

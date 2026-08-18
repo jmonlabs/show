@@ -1,6 +1,6 @@
 # jmon/show
 
-Hearing and seeing a JMON composition: playback, live coding, offline WAV
+Hearing and seeing a JMON piece: playback, live coding, offline WAV
 rendering, score engraving.
 
 Everything in the JMON libraries that touches Web Audio or the DOM lives here,
@@ -22,9 +22,9 @@ import { VerovioToolkit } from "npm:verovio";
 ```
 
 ```js
-show.play(composition,  { Tone, io, sound });
-show.score(composition, { io, verovio, VerovioToolkit });
-show.wav(composition,   { Tone, io, sound, filename: "piece.wav" });
+show.play(piece,  { Tone, io, sound });
+show.score(piece, { io, verovio, VerovioToolkit });
+show.wav(piece,   { Tone, io, sound, filename: "piece.wav" });
 ```
 
 ## Why things are passed in
@@ -34,7 +34,7 @@ package here can depend on another only by receiving it, never by importing
 it. The constraint turned out to be a good rule: what a call needs is visible
 at the call site.
 
-**`io` is required.** Reading a composition is its job: what a `tempoMap` does
+**`io` is required.** Reading a piece is its job: what a `tempoMap` does
 to a beat position, what an articulation compiles to, how an automation target
 resolves. Without it a piece would still play, but its tempo map, articulations
 and automation would be dropped in silence, so `show` refuses instead and says

@@ -1,5 +1,5 @@
 /**
- * jmon/show — hearing and seeing a JMON composition.
+ * jmon/show — hearing and seeing a JMON piece.
  *
  * Playback, live coding, offline WAV rendering, and score engraving. Every
  * part of the library that touches Web Audio or the DOM lives here, and
@@ -16,7 +16,7 @@
  *     import sound from "https://cdn.jsdelivr.net/gh/jmonlabs/sound@main/src/index.js";
  *     import * as Tone from "npm:tone";
  *
- *     show.play(composition, { Tone, io, sound });
+ *     show.play(piece, { Tone, io, sound });
  *
  * `io` is required: without it a piece would play, but its tempo map,
  * articulations and automation would be dropped in silence. `sound` is
@@ -41,9 +41,9 @@ export const VERSION = "1.0.0";
 export { createPlayer, downloadWav, scoreSVG, tonejs, requireFormat };
 
 /**
- * A player element for a composition.
+ * A player element for a piece.
  *
- * @param {Object} composition - A JMON composition
+ * @param {Object} piece - A JMON piece
  * @param {Object} options
  * @param {Object} options.Tone - The Tone.js namespace
  * @param {Object} options.io - `jmon/io`. Required.
@@ -51,29 +51,29 @@ export { createPlayer, downloadWav, scoreSVG, tonejs, requireFormat };
  * @param {boolean} [options.autoplay=false]
  * @returns {HTMLElement}
  */
-export function play(composition, options = {}) {
-  return createPlayer(composition, options);
+export function play(piece, options = {}) {
+  return createPlayer(piece, options);
 }
 
 /**
- * Render a composition to WAV and return a download link.
+ * Render a piece to WAV and return a download link.
  *
- * @param {Object} composition - A JMON composition
+ * @param {Object} piece - A JMON piece
  * @param {Object} options - `{ Tone, io, sound, filename, duration }`
  */
-export function wav(composition, options = {}) {
-  const { Tone, filename = "composition.wav", duration } = options;
-  return downloadWav(composition, Tone, filename, duration, options);
+export function wav(piece, options = {}) {
+  const { Tone, filename = "piece.wav", duration } = options;
+  return downloadWav(piece, Tone, filename, duration, options);
 }
 
 /**
- * Engrave a composition as a score.
+ * Engrave a piece as a score.
  *
- * @param {Object} composition - A JMON composition
+ * @param {Object} piece - A JMON piece
  * @param {Object} options - `{ io, verovio, VerovioToolkit }` and render options
  */
-export function score(composition, options = {}) {
-  return renderScore(composition, options);
+export function score(piece, options = {}) {
+  return renderScore(piece, options);
 }
 
 /** The mastering chains: dark, light, warm, cinematic, intimate, broadcast, vinyl, lush. */

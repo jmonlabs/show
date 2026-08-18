@@ -1,5 +1,5 @@
 /**
- * Reading a composition is `jmon/io`'s job, not this package's.
+ * Reading a piece is `jmon/io`'s job, not this package's.
  *
  * What a `tempoMap` does to a beat position, what an articulation compiles to,
  * how an automation target resolves: that is the meaning of the JMON format,
@@ -13,10 +13,10 @@
  */
 
 const MISSING =
-  "jmon/show needs jmon/io to read a composition — its tempo map, time and key " +
+  "jmon/show needs jmon/io to read a piece — its tempo map, time and key " +
   "signatures, automation and articulations.\n\n" +
   '  import io from "https://cdn.jsdelivr.net/gh/jmonlabs/io@main/src/index.js";\n' +
-  "  show.play(composition, { Tone, sound, io });\n\n" +
+  "  show.play(piece, { Tone, sound, io });\n\n" +
   "See https://github.com/jmonlabs/io";
 
 /**

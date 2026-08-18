@@ -20,7 +20,7 @@ import io from "./helpers/io.mjs";
 
 const note = (pitch, time, duration = 1, velocity = 0.8) => ({ pitch, duration, time, velocity });
 
-const composition = (tracks, extra = {}) => ({
+const piece = (tracks, extra = {}) => ({
   format: "jmon", version: "1.0", tempo: 120, tracks, ...extra,
 });
 
@@ -37,15 +37,15 @@ test("the player rejects what it cannot play", async () => {
     globalThis.Tone = Tone;
     const { createPlayer } = await import("../src/player.js");
 
-    assert.throws(() => createPlayer(null, { Tone, io }), /Invalid composition/);
-    assert.throws(() => createPlayer("nope", { Tone, io }), /Invalid composition/);
+    assert.throws(() => createPlayer(null, { Tone, io }), /Invalid piece/);
+    assert.throws(() => createPlayer("nope", { Tone, io }), /Invalid piece/);
     assert.throws(() => createPlayer({ tracks: "not an array" }, { Tone, io }), /must be an array/);
   } finally {
     restore();
   }
 });
 
-test("a bare array of pitches is accepted as a composition", async () => {
+test("a bare array of pitches is accepted as a piece", async () => {
   const { record } = await playAndRecord([60, 62, 64]);
   assert.equal(record.scheduled.length, 3, "one event per pitch");
 });
@@ -55,7 +55,7 @@ test("a bare array of pitches is accepted as a composition", async () => {
 test("notes are scheduled at their beat positions converted to seconds", async () => {
   // 120 BPM: one beat is half a second.
   const { record } = await playAndRecord(
-    composition([{ label: "lead", notes: [note(60, 0), note(64, 1), note(67, 2)] }]),
+    piece([{ label: "lead", notes: [note(60, 0), note(64, 1), note(67, 2)] }]),
   );
 
   assert.deepEqual(times(record), [0, 0.5, 1]);
@@ -63,23 +63,23 @@ test("notes are scheduled at their beat positions converted to seconds", async (
 
 test("the tempo governs the conversion", async () => {
   const { record } = await playAndRecord(
-    composition([{ label: "lead", notes: [note(60, 0), note(64, 2)] }], { tempo: 60 }),
+    piece([{ label: "lead", notes: [note(60, 0), note(64, 2)] }], { tempo: 60 }),
   );
 
   // 60 BPM: one beat is a full second, so beat 2 is at 2s.
   assert.deepEqual(times(record), [0, 2]);
 });
 
-test("the transport takes the composition's tempo", async () => {
+test("the transport takes the piece's tempo", async () => {
   const { record, Tone } = await playAndRecord(
-    composition([{ label: "lead", notes: [note(60, 0)] }], { tempo: 144 }),
+    piece([{ label: "lead", notes: [note(60, 0)] }], { tempo: 144 }),
   );
   assert.equal(Tone.Transport.bpm.value, 144);
   assert.ok(record.transport.starts > 0, "the transport should have been started");
 });
 
 test("every track is scheduled, not just the first", async () => {
-  const { record } = await playAndRecord(composition([
+  const { record } = await playAndRecord(piece([
     { label: "lead", notes: [note(60, 0), note(64, 1)] },
     { label: "bass", notes: [note(36, 0), note(38, 1), note(40, 2)] },
   ]));
@@ -88,7 +88,7 @@ test("every track is scheduled, not just the first", async () => {
 });
 
 test("rests are not scheduled", async () => {
-  const { record } = await playAndRecord(composition([{
+  const { record } = await playAndRecord(piece([{
     label: "lead",
     notes: [note(60, 0), { pitch: null, duration: 1, time: 1 }, note(64, 2)],
   }]));
@@ -99,7 +99,7 @@ test("rests are not scheduled", async () => {
 /* --- tempo maps ---------------------------------------------------------- */
 
 test("a tempoMap moves the notes that follow it", async () => {
-  const { record } = await playAndRecord(composition(
+  const { record } = await playAndRecord(piece(
     [{ label: "lead", notes: [note(60, 0), note(62, 2), note(64, 4), note(65, 6)] }],
     { tempoMap: [{ time: 0, tempo: 120 }, { time: 4, tempo: 60 }] },
   ));
@@ -116,8 +116,8 @@ test("a tempoMap moves the notes that follow it", async () => {
 
 test("without a tempoMap the schedule is unchanged", async () => {
   const notes = [note(60, 0), note(62, 1), note(64, 2), note(65, 3)];
-  const flat = await playAndRecord(composition([{ label: "lead", notes }]));
-  const mapped = await playAndRecord(composition([{ label: "lead", notes }], {
+  const flat = await playAndRecord(piece([{ label: "lead", notes }]));
+  const mapped = await playAndRecord(piece([{ label: "lead", notes }], {
     tempoMap: [{ time: 0, tempo: 120 }],
   }));
 
@@ -128,7 +128,7 @@ test("without a tempoMap the schedule is unchanged", async () => {
 
 
 test("an explicit synth type is honoured", async () => {
-  const { record } = await playAndRecord(composition([
+  const { record } = await playAndRecord(piece([
     { label: "pad", synth: { type: "FMSynth", options: { detune: 3 } }, notes: [note(60, 0)] },
   ]));
 
@@ -138,7 +138,7 @@ test("an explicit synth type is honoured", async () => {
 });
 
 test("a customPreset resolves to its type and options", async () => {
-  const { record } = await playAndRecord(composition(
+  const { record } = await playAndRecord(piece(
     [{ label: "lead", synth: "warmPad", notes: [note(60, 0)] }],
     { customPresets: [{ id: "warmPad", type: "MonoSynth", options: { detune: 7 } }] },
   ));
@@ -149,7 +149,7 @@ test("a customPreset resolves to its type and options", async () => {
 });
 
 test("inline options layer over a referenced preset", async () => {
-  const { record } = await playAndRecord(composition(
+  const { record } = await playAndRecord(piece(
     [{ label: "lead", synth: { preset: "warmPad", options: { detune: 1 } }, notes: [note(60, 0)] }],
     { customPresets: [{ id: "warmPad", type: "MonoSynth", options: { detune: 7, portamento: 0.2 } }] },
   ));
@@ -162,7 +162,7 @@ test("inline options layer over a referenced preset", async () => {
 /* --- audio graph --------------------------------------------------------- */
 
 test("audioGraph nodes are constructed", async () => {
-  const { record } = await playAndRecord(composition(
+  const { record } = await playAndRecord(piece(
     [{ label: "lead", notes: [note(60, 0)] }],
     {
       audioGraph: [
@@ -180,7 +180,7 @@ test("audioGraph nodes are constructed", async () => {
 /* --- automation ---------------------------------------------------------- */
 
 test("automation targeting an audioGraph node reaches its parameter", async () => {
-  const { record } = await playAndRecord(composition(
+  const { record } = await playAndRecord(piece(
     [{ label: "lead", notes: [note(60, 0), note(62, 4)] }],
     {
       audioGraph: [{ id: "reverb", type: "Reverb", options: {} }],
@@ -214,10 +214,10 @@ test("a midi.cc channel drives nothing without a hint, and something with one", 
   };
   const tracks = [{ label: "lead", notes: [note(60, 0)] }];
 
-  const unhinted = await playAndRecord(composition(tracks, base));
+  const unhinted = await playAndRecord(piece(tracks, base));
   assert.equal(unhinted.record.scheduled.length, 1, "only the note — the CC has no target");
 
-  const hinted = await playAndRecord(composition(tracks, {
+  const hinted = await playAndRecord(piece(tracks, {
     ...base,
     converterHints: { tone: { cc1: { target: "filter", parameter: "frequency", range: [200, 2000] } } },
   }));
@@ -231,8 +231,8 @@ test("a midi.cc channel drives nothing without a hint, and something with one", 
 
 /* --- time signatures ----------------------------------------------------- */
 
-test("the transport takes the composition's time signature", async () => {
-  const { Tone } = await playAndRecord(composition(
+test("the transport takes the piece's time signature", async () => {
+  const { Tone } = await playAndRecord(piece(
     [{ label: "lead", notes: [note(60, 0)] }],
     { timeSignature: "7/8" },
   ));
@@ -242,7 +242,7 @@ test("the transport takes the composition's time signature", async () => {
 /* --- the returned UI ----------------------------------------------------- */
 
 test("the player returns a DOM element with controls attached", async () => {
-  const { ui } = await playAndRecord(composition([{ label: "lead", notes: [note(60, 0)] }]));
+  const { ui } = await playAndRecord(piece([{ label: "lead", notes: [note(60, 0)] }]));
   assert.ok(ui, "createPlayer should return an element");
   assert.ok(ui.children.length > 0, "the player should have built some UI");
 });
@@ -263,7 +263,7 @@ async function slideWith(trackSpec, withoutDetune = [], extra = {}) {
     globalThis.Tone = Tone;
 
     const { createPlayer } = await import(`../src/player.js?${withoutDetune.join("-")}`);
-    const ui = createPlayer(composition([{
+    const ui = createPlayer(piece([{
       ...trackSpec,
       notes: [{ ...note(60, 0, 2), articulations: [{ type: "glissando", target: 67 }] }],
     }], extra), { Tone, io });
@@ -352,7 +352,7 @@ test("a descending slide ramps downwards", async () => {
     const { Tone, record } = createFakeTone();
     globalThis.Tone = Tone;
     const { createPlayer } = await import("../src/player.js?down");
-    const ui = createPlayer(composition([{
+    const ui = createPlayer(piece([{
       label: "lead", synth: { type: "MonoSynth" },
       notes: [{ ...note(72, 0, 2), articulations: [{ type: "glissando", target: 60 }] }],
     }]), { Tone, io });
@@ -371,7 +371,7 @@ test("a descending slide ramps downwards", async () => {
 });
 
 test("a note without a slide sets no detune ramp", async () => {
-  const { record } = await playAndRecord(composition([
+  const { record } = await playAndRecord(piece([
     { label: "lead", synth: { type: "MonoSynth" }, notes: [note(60, 0), note(64, 1)] },
   ]));
   for (const event of record.scheduled) event.callback(0);
@@ -389,7 +389,7 @@ test("a note without a slide sets no detune ramp", async () => {
 
 test("a preset naming a Tone class still resolves to that class", async () => {
   // The GM branch must not swallow the string case.
-  const { record } = await playAndRecord(composition(
+  const { record } = await playAndRecord(piece(
     [{ label: "lead", synth: "warm", notes: [note(60, 0)] }],
     { customPresets: [{ id: "warm", type: "MonoSynth", options: { detune: 7 } }] },
   ));
@@ -435,7 +435,7 @@ async function playWithSound(comp, { withSound = true } = {}) {
 }
 
 test("a General MIDI program is handed to the provider, not built here", async () => {
-  const record = await playWithSound(composition([
+  const record = await playWithSound(piece([
     { label: "violin", synth: 40, notes: [note(67, 0)] },
   ]));
 
@@ -446,7 +446,7 @@ test("a General MIDI program is handed to the provider, not built here", async (
 test("the sampling options travel with the spec", async () => {
   // The player must not interpret `strategy` — how densely to sample is the
   // provider's decision, so the spec goes through whole.
-  const record = await playWithSound(composition([
+  const record = await playWithSound(piece([
     { label: "violin", synth: { gm: 40, strategy: "complete" }, notes: [note(67, 0)] },
   ]));
 
@@ -456,7 +456,7 @@ test("the sampling options travel with the spec", async () => {
 test("a preset is expanded before the provider sees it", async () => {
   // The provider knows nothing about customPresets — that is JMON's business,
   // so what arrives is already a plain spec.
-  const record = await playWithSound(composition(
+  const record = await playWithSound(piece(
     [{ label: "strings", synth: "violin", notes: [note(67, 0)] }],
     { customPresets: [{ id: "violin", type: 40, strategy: "complete" }] },
   ));
@@ -467,7 +467,7 @@ test("a preset is expanded before the provider sees it", async () => {
 });
 
 test("prepare is called once, with every track's resolved spec", async () => {
-  const record = await playWithSound(composition(
+  const record = await playWithSound(piece(
     [
       { label: "violin", synth: "fiddle", notes: [note(67, 0)] },
       { label: "lead", synth: { type: "MonoSynth" }, notes: [note(60, 0)] },
@@ -482,7 +482,7 @@ test("prepare is called once, with every track's resolved spec", async () => {
 });
 
 test("a glissando on a sampled instrument goes through bendVoices", async () => {
-  const record = await playWithSound(composition([{
+  const record = await playWithSound(piece([{
     label: "violin", synth: 40,
     notes: [{ ...note(60, 0, 2), articulations: [{ type: "glissando", target: 67 }] }],
   }]));
@@ -495,7 +495,7 @@ test("a glissando on a sampled instrument goes through bendVoices", async () => 
 });
 
 test("a held note goes through holdVoices, in seconds", async () => {
-  const record = await playWithSound(composition(
+  const record = await playWithSound(piece(
     [{ label: "strings", synth: 48, notes: [note(60, 0, 8)] }],
     { tempo: 60 },
   ));
@@ -506,7 +506,7 @@ test("a held note goes through holdVoices, in seconds", async () => {
 });
 
 test("loopSustain: false keeps the player from asking at all", async () => {
-  const record = await playWithSound(composition(
+  const record = await playWithSound(piece(
     [{ label: "strings", synth: { gm: 48, loopSustain: false }, notes: [note(60, 0, 8)] }],
     { tempo: 60 },
   ));
@@ -515,10 +515,10 @@ test("loopSustain: false keeps the player from asking at all", async () => {
 });
 
 test("without a provider, a GM track still plays — on a synth", async () => {
-  // The composition must not fail to load. It loses the instrument, not the
+  // The piece must not fail to load. It loses the instrument, not the
   // notes, and says so once rather than per track.
   const record = await playWithSound(
-    composition([
+    piece([
       { label: "violin", synth: 40, notes: [note(67, 0)] },
       { label: "cello", synth: 42, notes: [note(48, 0)] },
     ]),
@@ -535,7 +535,7 @@ test("the provider decides what it recognises, not the player", async () => {
   // because only the provider knows which of them are its business. Skipping
   // the network probe for a synth-only piece is its call, not the player's —
   // which is why nothing here second-guesses the spec.
-  const record = await playWithSound(composition([
+  const record = await playWithSound(piece([
     { label: "lead", synth: { type: "MonoSynth" }, notes: [note(60, 0)] },
   ]));
 

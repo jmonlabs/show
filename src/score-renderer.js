@@ -14,19 +14,19 @@ import { isBrowser } from "./env.js";
 export { scoreSVG };
 
 /**
- * Render a JMON composition into a DOM element. In a browser this returns
+ * Render a JMON piece into a DOM element. In a browser this returns
  * a `<div>` wrapping the Verovio SVG. In a headless environment it falls
  * back to returning the SVG string so the caller still gets something
  * useful — the top-level `jm.score` will then forward it through `present()`
  * for rich notebook display.
  *
- * @param {Object} composition - The JMON composition to render
+ * @param {Object} piece - The JMON piece to render
  * @param {Object} options - Same options as scoreSVG
  * @returns {Promise<HTMLElement|string>}
  */
-export async function score(composition, options = {}) {
+export async function score(piece, options = {}) {
   if (!isBrowser()) {
-    const { svg } = await scoreSVG(composition, options);
+    const { svg } = await scoreSVG(piece, options);
     return svg;
   }
 
@@ -40,7 +40,7 @@ export async function score(composition, options = {}) {
 
   try {
     notationDiv.innerHTML = '<p style="color:#888">Initializing Verovio...</p>';
-    const { svg } = await scoreSVG(composition, options);
+    const { svg } = await scoreSVG(piece, options);
     notationDiv.innerHTML = svg;
   } catch (error) {
     console.error("[SCORE] Render error:", error);
