@@ -2,7 +2,7 @@
   "name": "@jmon/show",
   "private": true,
   "version": "1.0.0",
-  "description": "Hearing and seeing a JMON composition: playback, live coding, WAV rendering, score engraving. Everything that touches Web Audio or the DOM.",
+  "description": "Hearing and seeing a JMON piece: playback, live coding, WAV rendering, score engraving. Everything that touches Web Audio or the DOM.",
   "type": "module",
   "license": "GPL-3.0-or-later",
   "author": "JMON Labs",
