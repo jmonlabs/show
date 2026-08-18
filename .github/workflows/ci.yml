@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: show
+
+      # The tests run against the real jmon/io rather than a stub: a vendored
+      # copy would drift, which is the problem the split exists to avoid.
+      - uses: actions/checkout@v4
+        with:
+          repository: jmonlabs/io
+          path: io
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Unit tests
+        working-directory: show
+        run: node --test tests/*.test.js
