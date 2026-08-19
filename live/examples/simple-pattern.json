@@ -1,0 +1,37 @@
+{
+  "format": "jmon",
+  "version": "1.0",
+  "tempo": 120,
+  "timeSignature": "4/4",
+  "tracks": [
+    {
+      "label": "melody",
+      "notes": [
+        {
+          "pitch": "C4",
+          "time": 0,
+          "duration": "4n",
+          "velocity": 0.7
+        },
+        {
+          "pitch": "E4",
+          "time": 1,
+          "duration": "4n",
+          "velocity": 0.8
+        },
+        {
+          "pitch": "G4",
+          "time": 2,
+          "duration": "4n",
+          "velocity": 0.6
+        },
+        {
+          "pitch": "C5",
+          "time": 3,
+          "duration": "2n",
+          "velocity": 0.9
+        }
+      ]
+    }
+  ]
+}

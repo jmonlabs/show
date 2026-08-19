@@ -1,0 +1,32 @@
+{
+  "format": "jmon",
+  "version": "1.0",
+  "tempo": 140,
+  "timeSignature": "4/4",
+  "metadata": {
+    "title": "Multi-Track Example",
+    "description": "Demonstrates multiple tracks with melody and bass"
+  },
+  "tracks": [
+    {
+      "label": "melody",
+      "notes": [
+        {"pitch": 72, "time": 0, "duration": "8n", "velocity": 0.7},
+        {"pitch": 74, "time": 0.5, "duration": "8n", "velocity": 0.6},
+        {"pitch": 76, "time": 1, "duration": "8n", "velocity": 0.8},
+        {"pitch": 77, "time": 1.5, "duration": "8n", "velocity": 0.7},
+        {"pitch": 79, "time": 2, "duration": "4n", "velocity": 0.9},
+        {"pitch": 77, "time": 3, "duration": "4n", "velocity": 0.75}
+      ]
+    },
+    {
+      "label": "bass",
+      "notes": [
+        {"pitch": 36, "time": 0, "duration": "4n", "velocity": 0.9},
+        {"pitch": 41, "time": 1, "duration": "4n", "velocity": 0.85},
+        {"pitch": 43, "time": 2, "duration": "4n", "velocity": 0.8},
+        {"pitch": 36, "time": 3, "duration": "4n", "velocity": 0.9}
+      ]
+    }
+  ]
+}

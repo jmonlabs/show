@@ -60,6 +60,7 @@ written. One warning, not one per track.
 | `show.score` | Verovio engraving, via `io.musicxml`. |
 | `show.wav` | offline rendering through `Tone.Offline`, using the same synth factory as the player, so the file matches what you heard. |
 | `src/live/` | the live-coding iframe player. Schedules in transport ticks and swaps patterns at a loop or bar boundary. Unlike the rest, it fetches Tone, io and sound by URL itself, because it is an application rather than a library. |
+| `live/` | the REPL page that hosts `src/live/`'s player in an iframe: an editor, a `send()`/`postMessage` bridge, Web MIDI output. Deployed at [jmonlabs.github.io/live](https://jmonlabs.github.io/live/), not from this repo's own Pages. |
 | `show.master` | mastering chains: `dark`, `light`, `warm`, `cinematic`, `intimate`, `broadcast`, `vinyl`, `lush`. |
 
 ## The other packages

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JMON Live REPL</title>
+  <style>
+    /* Monaspace Radon — GitHub Next's handwriting-flavored monospace, served
+       from jsDelivr's GitHub passthrough. Pinned to v1.101. If the network
+       request fails, the font-family fallback chain still resolves to a
+       system monospace. */
+    @font-face {
+      font-family: 'Monaspace Radon';
+      src: url('https://cdn.jsdelivr.net/gh/githubnext/monaspace@v1.101/fonts/webfonts/MonaspaceRadon-Regular.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* --- Palette (logo-derived greens + warm cream + salmon accent) -----
+       --bg          background, body chrome
+       --surface     panels, buttons, editor pane
+       --border      subtle dividers
+       --text        primary text (warm cream)
+       --text-mute   secondary text (desaturated taupe)
+       --accent      primary accent (logo salmon)
+       --accent-hi   secondary accent (paler salmon, hover/highlight)
+       The syntax-highlight tokens below are read by the CodeMirror theme
+       (see EditorView.theme + HighlightStyle.define in the script below)
+       through CSS custom properties — edit the palette in one place and the
+       editor follows. */
+    :root {
+      --bg:        #3D4F42;
+      --surface:   #344038;
+      --border:    #4A5C50;
+      --text:      #E8DDD2;
+      --text-mute: #A89B8E;
+      --accent:    #CB9886;
+      --accent-hi: #D9B5A3;
+      --syn-kw:    #E8B4A0;
+      --syn-str:   #B8C9A8;
+      --syn-num:   #D4C896;
+      --syn-cmt:   #6B7D70;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Monaspace Radon', 'Monaco', 'Courier New', monospace;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .header {
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    .header h2 {
+      font-size: 14px;
+      color: var(--accent);
+      letter-spacing: 2px;
+      margin-right: auto;
+    }
+    button, select {
+      font-family: inherit;
+      font-size: 12px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--accent);
+      border-radius: 3px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    button:hover, select:hover {
+      background: var(--border);
+      border-color: var(--accent-hi);
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    select { padding: 3px 6px; }
+    .status {
+      color: var(--accent);
+      font-size: 11px;
+      padding: 2px 6px;
+      border: 1px dashed var(--accent);
+      border-radius: 3px;
+    }
+    .body {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      flex: 1;
+      min-height: 0;
+    }
+    @media (max-width: 800px) {
+      .body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    }
+    /* CodeMirror host — fills the editor pane. The internal CM classes
+       (.cm-editor / .cm-scroller / .cm-gutters) are themed in JS via
+       EditorView.theme(); these rules just handle layout + font. */
+    #code-host {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    .cm-editor {
+      height: 100%;
+      font-family: 'Monaspace Radon', 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      outline: none;
+    }
+    .cm-editor.cm-focused {
+      outline: none;
+    }
+    .cm-scroller {
+      font-family: inherit;
+    }
+    .player-pane {
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+    }
+    iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: var(--bg);
+    }
+    .hint {
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--text-mute);
+      border-top: 1px solid var(--border);
+    }
+    kbd {
+      background: var(--surface);
+      color: var(--accent);
+      padding: 1px 5px;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>JMON LIVE REPL</h2>
+    <button id="run">Run <kbd>Ctrl/Cmd+Enter</kbd></button>
+    <button id="stop">Stop</button>
+    <button id="reset">Reset</button>
+    <label>mode
+      <select id="mode">
+        <option value="next-loop" selected>next-loop</option>
+        <option value="next-bar">next-bar</option>
+        <option value="immediate">immediate</option>
+      </select>
+    </label>
+    <button id="midi">Enable MIDI</button>
+    <select id="midi-out" title="MIDI output"></select>
+    <button id="load-demo" title="Load drums + drone + violin walk demo">Load demo</button>
+    <span class="status" id="status">waiting</span>
+  </div>
+  <div class="body">
+    <div id="code-host"></div>
+    <div class="player-pane">
+      <iframe id="player" src="index.html" allow="midi"></iframe>
+      <div class="hint">
+        Click the player once to enable audio.<br>
+        For MIDI to a DAW, enable a virtual MIDI port (IAC on macOS,
+        loopMIDI on Windows, snd-virmidi on Linux), click Enable MIDI,
+        then pick it from the dropdown.
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // CodeMirror 6 — small editor with JS syntax highlighting. Loaded as ESM
+    // from esm.sh (same pattern as everywhere else in this project). Pinned
+    // to major versions; CM6 ecosystem packages within the same major are
+    // interoperable, so esm.sh's module dedup handles cross-package sharing.
+    import { EditorView, keymap, lineNumbers, highlightActiveLine }
+      from "https://esm.sh/@codemirror/view@6";
+    import { EditorState } from "https://esm.sh/@codemirror/state@6";
+    import { javascript } from "https://esm.sh/@codemirror/lang-javascript@6";
+    import { HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput }
+      from "https://esm.sh/@codemirror/language@6";
+    import { defaultKeymap, history, historyKeymap }
+      from "https://esm.sh/@codemirror/commands@6";
+    import { closeBrackets } from "https://esm.sh/@codemirror/autocomplete@6";
+    import { tags as t } from "https://esm.sh/@lezer/highlight@1";
+
+    const playerEl = document.getElementById("player");
+    const statusEl = document.getElementById("status");
+    const modeEl = document.getElementById("mode");
+    const midiOutEl = document.getElementById("midi-out");
+    const codeHost = document.getElementById("code-host");
+
+    let playerReady = false;
+    // Persisted between runs so user code can keep state across re-evals:
+    //   scope.step = (scope.step ?? 0) + 1
+    const scope = {};
+
+    function setStatus(s) { statusEl.textContent = s; }
+
+    function send(msg) {
+      if (!playerReady) {
+        setStatus("player not ready yet");
+        return;
+      }
+      playerEl.contentWindow.postMessage(msg, "*");
+    }
+
+    // --- Editor setup ----------------------------------------------------
+    const STARTER_BUFFER = `// Edit, then Ctrl/Cmd+Enter to send to the player.
+// Assign \`pattern\` (or \`return\` one). Default swap mode is next-loop,
+// so changes land on the next bar boundary without tearing the loop.
+
+pattern = {
+  format: "jmon",
+  version: "1.0",
+  tempo: 120,
+  tracks: [
+    {
+      label: "lead",
+      notes: [
+        { pitch: "C4", time: 0,   duration: "8n", velocity: 0.8 },
+        { pitch: "E4", time: 0.5, duration: "8n", velocity: 0.7 },
+        { pitch: "G4", time: 1,   duration: "8n", velocity: 0.8 },
+        { pitch: "C5", time: 1.5, duration: "8n", velocity: 0.9 },
+        { pitch: "G4", time: 2,   duration: "8n", velocity: 0.7 },
+        { pitch: "E4", time: 2.5, duration: "8n", velocity: 0.7 },
+        { pitch: "C4", time: 3,   duration: "4n", velocity: 0.8 }
+      ]
+    }
+  ]
+};
+`;
+
+    // Theme + syntax tokens read directly from the CSS custom properties on
+    // :root, so editing the palette in <style> ripples into the editor.
+    const palette = EditorView.theme({
+      "&": {
+        backgroundColor: "var(--surface)",
+        color: "var(--text)",
+        height: "100%"
+      },
+      ".cm-content": { caretColor: "var(--accent)", padding: "14px 0" },
+      ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
+        { backgroundColor: "var(--border)" },
+      ".cm-gutters": {
+        backgroundColor: "var(--surface)",
+        color: "var(--text-mute)",
+        border: "none"
+      },
+      ".cm-activeLine": { backgroundColor: "transparent" },
+      ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--accent)" },
+      ".cm-matchingBracket, .cm-nonmatchingBracket": {
+        backgroundColor: "transparent",
+        color: "var(--accent-hi)",
+        outline: "1px solid var(--border)"
+      }
+    }, { dark: true });
+
+    const tokens = HighlightStyle.define([
+      { tag: t.keyword, color: "var(--syn-kw)" },
+      { tag: [t.string, t.regexp, t.special(t.string)], color: "var(--syn-str)" },
+      { tag: [t.number, t.bool, t.null], color: "var(--syn-num)" },
+      { tag: [t.comment, t.lineComment, t.blockComment, t.docComment],
+        color: "var(--syn-cmt)", fontStyle: "italic" },
+      { tag: t.propertyName, color: "var(--text)" },
+      { tag: [t.variableName, t.definition(t.variableName)], color: "var(--text)" },
+      { tag: t.operator, color: "var(--accent)" },
+      { tag: [t.bracket, t.paren, t.brace, t.squareBracket], color: "var(--text-mute)" }
+    ]);
+
+    const view = new EditorView({
+      parent: codeHost,
+      state: EditorState.create({
+        doc: STARTER_BUFFER,
+        extensions: [
+          lineNumbers(),
+          highlightActiveLine(),
+          history(),
+          bracketMatching(),
+          closeBrackets(),
+          indentOnInput(),
+          javascript(),
+          syntaxHighlighting(tokens),
+          palette,
+          keymap.of([
+            { key: "Mod-Enter", run: () => { run(); return true; }, preventDefault: true },
+            ...defaultKeymap,
+            ...historyKeymap
+          ])
+        ]
+      })
+    });
+
+    function getCode() { return view.state.doc.toString(); }
+    function setCode(text) {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text }
+      });
+    }
+
+    const AsyncFunction = (async function () {}).constructor;
+
+    async function run() {
+      const code = getCode();
+      // Pre-seed scope.pattern so a bare `pattern = {...}` inside `with(scope)`
+      // lands on scope (rather than creating a global). AsyncFunction bodies
+      // are sloppy mode, so `with` is allowed and user code can `await`.
+      scope.pattern = undefined;
+      try {
+        const fn = new AsyncFunction("scope", "with (scope) {\n" + code + "\n}");
+        await fn(scope);
+      } catch (err) {
+        console.error(err);
+        setStatus("error: " + err.message);
+        return;
+      }
+      const pattern = scope.pattern;
+      if (!pattern) {
+        setStatus("no `pattern` assigned");
+        return;
+      }
+      send({ type: "update", pattern, mode: modeEl.value });
+      setStatus("sent (" + modeEl.value + ")");
+    }
+
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type === "ready") {
+        playerReady = true;
+        setStatus("ready (click player to enable audio)");
+      } else if (data.type === "loop") {
+        setStatus("loop " + data.iteration + " @ beat " + data.beat);
+      } else if (data.type === "midi") {
+        const info = data.info || {};
+        midiOutEl.innerHTML = "";
+        for (const name of (info.outputs || [])) {
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          if (name === info.selected) opt.selected = true;
+          midiOutEl.appendChild(opt);
+        }
+        if (!info.outputs || !info.outputs.length) {
+          setStatus("no MIDI outputs found");
+        } else {
+          setStatus("MIDI: " + info.selected);
+        }
+      }
+    });
+
+    const DEMO_BUFFER = `// Live coding demo using jmon/algo. Cmd/Ctrl+Enter to run.
+//
+// Every track is browser audio by default, so you hear the whole thing
+// without any setup. The optional MIDI section at the bottom shows how
+// to route any track to a DAW via Web MIDI — without leaving the spec.
+
+// Loaded from GitHub via esm.sh, which bundles the file and serves it
+// with the application/javascript MIME type that ES module imports
+// require. jsDelivr's /gh/ passthrough serves text/plain, which the
+// browser refuses to execute as a module.
+scope.algo ??= await import("https://esm.sh/gh/jmonlabs/algo");
+const jm = scope.algo.default ?? scope.algo;
+
+// Key context collapses the repeated { tonic, mode } across Scale,
+// Ornament, Voice, Progression. Cached so re-runs don't rebuild it.
+scope.key ??= jm.key("C", "major");
+const K = scope.key;
+
+// Advance the seed on every Run so the walks evolve.
+scope.seed = (scope.seed ?? 0) + 1;
+
+// --- Scales (two registers) ----------------------------------------------
+const lowScale  = K.scale().generate({ start: 43, length: 15 }); // C2..C4
+// `start` selects the octave, then snaps back to the tonic — 43 lands on C2,
+// not G2. Generate wide and slice if you need an exact register.
+const highScale = K.scale().generate({ start: 67, length: 14 }); // C4..B5
+
+// --- Walks: two chains, two periodicities --------------------------------
+const violinIdx = new jm.generative.walks.Chain({
+  walkRange: [0, highScale.length - 1], walkStart: 5,
+  walkProbability: [-2, -1, 0, 1, 2], roundTo: 0
+}).line(16, scope.seed);
+
+const bassIdx = new jm.generative.walks.Chain({
+  walkRange: [0, lowScale.length - 1], walkStart: 4,
+  walkProbability: [-1, 0, 1], roundTo: 0
+}).line(4, scope.seed * 17);
+
+// --- Violin: scale walk + mordent on the first note ----------------------
+let violinNotes = violinIdx.map((i, k) => ({
+  pitch: highScale[i], time: k * 0.25, duration: "16n", velocity: 0.6
+}));
+violinNotes = K.ornament({ type: "mordent", parameters: { by: -1 } })
+  .apply([...violinNotes], 0);
+// Try: type:"trill" with parameters:{by:2,trillRate:0.25},
+//      type:"grace_note" with parameters:{graceNoteType:"acciaccatura",gracePitches:[72]},
+//      type:"turn", or type:"arpeggio" with parameters:{arpeggioDegrees:[0,2,4],direction:"up"}.
+
+// --- Bass: one walked scale tone per beat --------------------------------
+const bassNotes = bassIdx.map((i, k) => ({
+  pitch: lowScale[i], time: k, duration: "4n", velocity: 0.5
+}));
+
+// --- Pad: I IV V I triads built from the scale ---------------------------
+const sc = K.scale().generate({ start: 60, length: 8 }); // C4..C5
+const triad = (root) => [sc[root - 1], sc[root + 1], sc[root + 3]];
+const padChords = [
+  { pitch: triad(1), time: 0, duration: "4n", velocity: 0.12 },
+  { pitch: triad(4), time: 1, duration: "4n", velocity: 0.16 },
+  { pitch: triad(5), time: 2, duration: "4n", velocity: 0.18 },
+  { pitch: triad(1), time: 3, duration: "4n", velocity: 0.22 }
+];
+
+pattern = {
+  format: "jmon", version: "1.0", tempo: 96, timeSignature: "4/4",
+  tracks: [
+    // Comment out any track entry to silence it.
+    { label: "drone", notes: [{ pitch: ["C2", "G2", "C3"], time: 0, duration: "1n", velocity: 0.25 }]},
+    // synth.type names a Tone.js class (PolySynth handles the triad chords);
+    // synth.options are forwarded to the constructor.
+    { label: "pad", pan: -0.3, synth: { type: "PolySynth", options: { envelope: { attack: 0.4, decay: 0.4, sustain: 0.7, release: 1.2 } } }, notes: padChords },
+    { label: "bass",   notes: bassNotes },
+    // synth: 40 selects the GM violin SoundFont; first notes may be silent
+    // while samples load from CDN. Drop the synth field for a default Tone.
+    { label: "violin", synth: 40, pan: 0.4, notes: violinNotes }
+
+    // --- Optional: route a track to a DAW over MIDI ---
+    // The JMON spec defines "midiChannel" (0..15). Add it to any track
+    // above to route that track to Web MIDI instead of Tone.js audio.
+    // Then click "Enable MIDI" above and pick your virtual port. The DAW
+    // patch listening on that channel decides what it sounds like.
+    // Example: replace the violin entry with
+    //   { label: "violin", midiChannel: 0, notes: violinNotes }
+  ]
+};
+`;
+
+    function loadDemo() {
+      const cur = getCode().trim();
+      const defaultStarter = cur.startsWith("// Edit, then Ctrl/Cmd+Enter");
+      if (cur && !defaultStarter && cur !== DEMO_BUFFER.trim()) {
+        if (!confirm("Replace the current buffer with the demo?")) return;
+      }
+      setCode(DEMO_BUFFER);
+      setStatus("demo loaded — Enable MIDI, then Run");
+    }
+
+    document.getElementById("run").addEventListener("click", run);
+    document.getElementById("stop").addEventListener("click", () => send({ type: "stop" }));
+    document.getElementById("reset").addEventListener("click", () => send({ type: "reset" }));
+    document.getElementById("midi").addEventListener("click", () => send({ type: "enableMidi" }));
+    document.getElementById("load-demo").addEventListener("click", loadDemo);
+    midiOutEl.addEventListener("change", (e) => {
+      if (e.target.value) send({ type: "setMidiOutput", output: e.target.value });
+    });
+
+    // Ctrl/Cmd+Enter is wired through the CodeMirror keymap above; no extra
+    // window-level shortcut is needed.
+  </script>
+</body>
+</html>
