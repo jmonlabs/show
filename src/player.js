@@ -12,6 +12,28 @@ import {
 } from "./synth-factory.js";
 
 /**
+ * Players built in this process, so a fresh one can reap any previous
+ * instance whose output the page has since thrown away — a notebook cell
+ * that reruns while its player is still audible is the case this exists
+ * for; the old container is replaced in the DOM, and nothing else holds a
+ * reference to stop it.
+ *
+ * Reaping only ever touches an instance the DOM has visibly detached
+ * (`container.isConnected === false`). A player still on the page — in
+ * another cell, or a deliberate second one — is left alone. Where
+ * `isConnected` is not a real boolean (no live DOM, e.g. under test, or an
+ * embedder that never attaches the container) nothing is reaped; that
+ * embedder is on its own for cleanup, same as before this existed.
+ */
+const livePlayers = new Set();
+
+function reapOrphanedPlayers() {
+  for (const entry of livePlayers) {
+    if (entry.container.isConnected === false) entry.container.stop();
+  }
+}
+
+/**
  * Simplified Music Player - Just playback with articulations
  * No synth selectors, no downloads - focus on playing JMON pieces
  */
@@ -19,6 +41,8 @@ export function createPlayer(piece, options = {}) {
   if (!piece) {
     throw new Error("Invalid piece");
   }
+
+  reapOrphanedPlayers();
 
   // Normalize: wrap a plain array of MIDI pitches or note objects into a piece
   if (Array.isArray(piece)) {
@@ -72,6 +96,7 @@ export function createPlayer(piece, options = {}) {
 
   // Create UI container
   const container = document.createElement("div");
+  const registryEntry = { container };
   container.style.cssText = `
     font-family: Arial, sans-serif;
     background: #464646;
@@ -740,6 +765,7 @@ export function createPlayer(piece, options = {}) {
     timelineProgress.style.width = "0%";
     currentTimeDisplay.textContent = "0:00";
     cancelAnimationFrame(animationId);
+    livePlayers.delete(registryEntry);
   }
 
   // ── Timeline seek ────────────────────────────────────────────────
@@ -778,13 +804,13 @@ export function createPlayer(piece, options = {}) {
     play().catch(console.error);
   }
 
-  // Expose teardown on the returned element. Nothing else can reach this
-  // instance once its container is replaced — a notebook cell that reruns
-  // while the previous player is still audible has no other way to stop
-  // it, and it keeps running (holding its samplers, effects, and a slot
-  // on the shared Transport) forever.
+  // Expose teardown on the returned element, and register this instance so
+  // a later createPlayer() call can reap it automatically once the page
+  // has detached it (see reapOrphanedPlayers above). stop() deregisters
+  // itself, so a manual Stop click also clears this entry.
   container.stop = stop;
   container.dispose = stop;
+  livePlayers.add(registryEntry);
 
   return container;
 }

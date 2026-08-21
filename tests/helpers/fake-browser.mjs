@@ -42,6 +42,7 @@ function element(tag = "div") {
     textContent: "",
     innerHTML: "",
     className: "",
+    isConnected: true,
     appendChild(child) { this.children.push(child); return child; },
     append(...kids) { this.children.push(...kids); },
     addEventListener(event, fn) { this.handlers[event] = fn; },

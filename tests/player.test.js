@@ -74,12 +74,65 @@ test("the returned element exposes a way to tear the player down", async () => {
     assert.equal(typeof ui.stop, "function");
     assert.equal(typeof ui.dispose, "function");
     assert.ok(record.nodes.length > 0, "playing should have built at least one audio node");
+    // play() itself issues a Transport.stop()/start() pair, so the baseline
+    // is whatever that leaves behind — not necessarily zero.
+    const stopsAfterPlay = record.transport.stops;
 
     ui.dispose();
 
-    assert.ok(record.transport.stops > 0, "dispose() should stop the shared transport");
+    assert.ok(record.transport.stops > stopsAfterPlay, "dispose() should stop the shared transport");
     assert.equal(record.disposed.length, record.nodes.length,
       "dispose() should dispose every node it built");
+  } finally {
+    restore();
+  }
+});
+
+test("a new player reaps a previous one once the page has detached it", async () => {
+  const restore = installFakeBrowser();
+  try {
+    const { Tone, record } = createFakeTone();
+    globalThis.Tone = Tone;
+
+    const { createPlayer } = await import("../src/player.js");
+
+    const first = createPlayer(piece([{ label: "lead", notes: [note(60, 0)] }]), { Tone, io });
+    await collectHandlers(first).find((h) => typeof h.click === "function").click();
+    // play() itself issues a Transport.stop()/start() pair, so the baseline
+    // is whatever that leaves behind — not necessarily zero.
+    const stopsAfterPlay = record.transport.stops;
+
+    // The notebook reran the cell: its output, first, is gone from the page.
+    first.isConnected = false;
+
+    createPlayer(piece([{ label: "lead", notes: [note(62, 0)] }]), { Tone, io });
+
+    assert.ok(record.transport.stops > stopsAfterPlay,
+      "building a new player should have reaped the detached previous one");
+    assert.ok(record.disposed.length > 0,
+      "the orphaned player's nodes should have been disposed");
+  } finally {
+    restore();
+  }
+});
+
+test("a new player leaves a previous one alone while it is still on the page", async () => {
+  const restore = installFakeBrowser();
+  try {
+    const { Tone, record } = createFakeTone();
+    globalThis.Tone = Tone;
+
+    const { createPlayer } = await import("../src/player.js");
+
+    const first = createPlayer(piece([{ label: "lead", notes: [note(60, 0)] }]), { Tone, io });
+    await collectHandlers(first).find((h) => typeof h.click === "function").click();
+    const stopsAfterPlay = record.transport.stops;
+
+    // first.isConnected stays true: a second, deliberate player alongside it.
+    createPlayer(piece([{ label: "lead", notes: [note(62, 0)] }]), { Tone, io });
+
+    assert.equal(record.transport.stops, stopsAfterPlay,
+      "a player still on the page should not be touched");
   } finally {
     restore();
   }
