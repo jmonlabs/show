@@ -15,7 +15,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { playAndRecord, installFakeBrowser, createFakeTone } from "./helpers/fake-browser.mjs";
+import { playAndRecord, installFakeBrowser, createFakeTone, collectHandlers } from "./helpers/fake-browser.mjs";
 import io from "./helpers/io.mjs";
 
 const note = (pitch, time, duration = 1, velocity = 0.8) => ({ pitch, duration, time, velocity });
@@ -48,6 +48,41 @@ test("the player rejects what it cannot play", async () => {
 test("a bare array of pitches is accepted as a piece", async () => {
   const { record } = await playAndRecord([60, 62, 64]);
   assert.equal(record.scheduled.length, 3, "one event per pitch");
+});
+
+/* --- lifecycle ------------------------------------------------------------ */
+
+test("the returned element exposes a way to tear the player down", async () => {
+  // Dispose has to run against the same fake browser the player was built
+  // with, so this cannot go through playAndRecord — it restores the globals
+  // as soon as play() resolves, before a caller gets a chance to dispose.
+  const restore = installFakeBrowser();
+  try {
+    const { Tone, record } = createFakeTone();
+    globalThis.Tone = Tone;
+
+    const { createPlayer } = await import("../src/player.js");
+    const ui = createPlayer(
+      piece([{ label: "lead", notes: [note(60, 0), note(64, 1)] }]),
+      { Tone, io },
+    );
+
+    const handlers = collectHandlers(ui);
+    const play = handlers.find((h) => typeof h.click === "function");
+    await play.click();
+
+    assert.equal(typeof ui.stop, "function");
+    assert.equal(typeof ui.dispose, "function");
+    assert.ok(record.nodes.length > 0, "playing should have built at least one audio node");
+
+    ui.dispose();
+
+    assert.ok(record.transport.stops > 0, "dispose() should stop the shared transport");
+    assert.equal(record.disposed.length, record.nodes.length,
+      "dispose() should dispose every node it built");
+  } finally {
+    restore();
+  }
 });
 
 /* --- scheduling ---------------------------------------------------------- */
