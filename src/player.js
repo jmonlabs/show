@@ -778,5 +778,13 @@ export function createPlayer(piece, options = {}) {
     play().catch(console.error);
   }
 
+  // Expose teardown on the returned element. Nothing else can reach this
+  // instance once its container is replaced — a notebook cell that reruns
+  // while the previous player is still audible has no other way to stop
+  // it, and it keeps running (holding its samplers, effects, and a slot
+  // on the shared Transport) forever.
+  container.stop = stop;
+  container.dispose = stop;
+
   return container;
 }

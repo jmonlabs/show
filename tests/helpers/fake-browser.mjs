@@ -126,6 +126,7 @@ export function createFakeTone() {
     stops: [],         // { time } — explicit stops scheduled on a voice
     params: [],        // { param, value, time, kind }
     triggered: [],     // { pitch, duration, time, velocity }
+    disposed: [],      // { type } — nodes torn down via dispose()
     transport: { starts: 0, stops: 0 },
   };
 
@@ -133,6 +134,7 @@ export function createFakeTone() {
     constructor(type, options) {
       record.nodes.push({ type, options });
       this.type = type;
+      this.disposed = false;
       this.volume = new RecordingParam(0, record.params, `${type}.volume`);
       this.wet = new RecordingParam(1, record.params, `${type}.wet`);
       this.frequency = new RecordingParam(440, record.params, `${type}.frequency`);
@@ -152,7 +154,7 @@ export function createFakeTone() {
       return this;
     }
     disconnect() { return this; }
-    dispose() {}
+    dispose() { this.disposed = true; record.disposed.push({ type: this.type }); }
     triggerAttackRelease(pitch, duration, time, velocity) {
       record.triggered.push({ pitch, duration, time, velocity });
     }
