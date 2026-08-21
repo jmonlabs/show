@@ -338,7 +338,6 @@ async function buildAudioGraphInstruments(piece, Tone) {
 	}
 
 	const map = {};
-	const { SYNTHESIZER_TYPES, ALL_EFFECTS } = await import("../constants/audio-effects.js");
 
 	try {
 		// First pass: Create all nodes
