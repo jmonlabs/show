@@ -1,0 +1,23 @@
+// Edit, then Ctrl/Cmd+Enter to send to the player.
+// Assign `pattern` (or `return` one). Default swap mode is next-loop,
+// so changes land on the next bar boundary without tearing the loop.
+
+pattern = {
+  format: "jmon",
+  version: "1.0",
+  tempo: 120,
+  tracks: [
+    {
+      label: "lead",
+      notes: [
+        { pitch: "C4", time: 0,   duration: "8n", velocity: 0.8 },
+        { pitch: "E4", time: 0.5, duration: "8n", velocity: 0.7 },
+        { pitch: "G4", time: 1,   duration: "8n", velocity: 0.8 },
+        { pitch: "C5", time: 1.5, duration: "8n", velocity: 0.9 },
+        { pitch: "G4", time: 2,   duration: "8n", velocity: 0.7 },
+        { pitch: "E4", time: 2.5, duration: "8n", velocity: 0.7 },
+        { pitch: "C4", time: 3,   duration: "4n", velocity: 0.8 }
+      ]
+    }
+  ]
+};
