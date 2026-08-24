@@ -87,6 +87,10 @@ export class Session {
             this.loopDuration = 0;
         }
 
+        // A track marked `loop` cycles on its own length instead of falling
+        // silent until the longest track comes around (JMON spec: tracks[].loop).
+        this.flattenedNotes = this.expandLoopingTracks(this.flattenedNotes);
+
         if (resetPosition) {
             this.position = 0;
             this.eventsPlayed = 0;
@@ -140,6 +144,74 @@ export class Session {
             ...note,
             time: this.parseTime(note.time) // Normalize to quarter notes
         }));
+    }
+
+    /**
+     * How long one cycle of a track lasts, in quarter notes — 0 when the
+     * track does not loop.
+     *
+     * JMON spec: `tracks[].loop` is a boolean or a musical-duration string,
+     * `tracks[].loopEnd` a bars:beats:ticks end point. `loop: true` without
+     * an explicit length cycles on the track's own extent, rounded up to the
+     * bar — which is what a live coder means by "just loop it".
+     *
+     * @param {Object} track - A JMON track
+     * @param {number} extent - The track's latest note end, in quarter notes
+     * @returns {number} Cycle length in quarter notes, or 0
+     */
+    trackLoopLength(track, extent) {
+        const loop = track.loop;
+        if (loop === undefined || loop === null || loop === false) return 0;
+        let length = 0;
+        if (typeof loop === 'string') length = this.parseTime(loop);
+        else if (typeof loop === 'number' && loop > 0) length = loop;
+        if (!length && typeof track.loopEnd === 'string') length = this.parseTime(track.loopEnd);
+        if (!length) {
+            const bpb = this.beatsPerBar || 4;
+            length = Math.max(bpb, Math.ceil(extent / bpb) * bpb);
+        }
+        return length;
+    }
+
+    /**
+     * Tile every looping track's notes across the pattern, so a 2-bar drum
+     * loop keeps cycling under a 4-bar bass line instead of playing once and
+     * waiting. The global loop is still `loopDuration`: a cycle length that
+     * does not divide it gets its phase reset at the pattern boundary.
+     *
+     * @param {Array} notes - Flattened notes, times in quarter notes
+     * @returns {Array} Notes with looping tracks tiled, sorted by time
+     */
+    expandLoopingTracks(notes) {
+        if (!this.tracks || this.tracks.length === 0 || !this.loopDuration) return notes;
+
+        const extents = new Map();
+        for (const note of notes) {
+            const end = note.time + this.parseDuration(note.duration);
+            if (end > (extents.get(note.trackLabel) ?? 0)) extents.set(note.trackLabel, end);
+        }
+
+        const epsilon = 1e-9;
+        const out = [...notes];
+        let tiled = false;
+        for (const track of this.tracks) {
+            const length = this.trackLoopLength(track, extents.get(track.label) ?? 0);
+            if (!length || length >= this.loopDuration) continue;
+            const base = notes.filter(
+                (n) => n.trackLabel === track.label && n.time < length - epsilon
+            );
+            for (let offset = length; offset < this.loopDuration - epsilon; offset += length) {
+                for (const n of base) {
+                    if (n.time + offset < this.loopDuration - epsilon) {
+                        out.push({ ...n, time: n.time + offset });
+                    }
+                }
+            }
+            tiled = true;
+        }
+        if (!tiled) return notes;
+        out.sort((a, b) => a.time - b.time);
+        return out;
     }
 
     /**
