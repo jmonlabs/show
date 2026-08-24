@@ -217,30 +217,8 @@
     }
 
     // --- Editor setup ----------------------------------------------------
-    const STARTER_BUFFER = `// Edit, then Ctrl/Cmd+Enter to send to the player.
-// Assign \`pattern\` (or \`return\` one). Default swap mode is next-loop,
-// so changes land on the next bar boundary without tearing the loop.
-
-pattern = {
-  format: "jmon",
-  version: "1.0",
-  tempo: 120,
-  tracks: [
-    {
-      label: "lead",
-      notes: [
-        { pitch: "C4", time: 0,   duration: "8n", velocity: 0.8 },
-        { pitch: "E4", time: 0.5, duration: "8n", velocity: 0.7 },
-        { pitch: "G4", time: 1,   duration: "8n", velocity: 0.8 },
-        { pitch: "C5", time: 1.5, duration: "8n", velocity: 0.9 },
-        { pitch: "G4", time: 2,   duration: "8n", velocity: 0.7 },
-        { pitch: "E4", time: 2.5, duration: "8n", velocity: 0.7 },
-        { pitch: "C4", time: 3,   duration: "4n", velocity: 0.8 }
-      ]
-    }
-  ]
-};
-`;
+    let STARTER_BUFFER = ""; // loaded from starter.txt
+    let DEMO_BUFFER = "";    // loaded from demo.txt
 
     // Theme + syntax tokens read directly from the CSS custom properties on
     // :root, so editing the palette in <style> ripples into the editor.
@@ -283,7 +261,7 @@ pattern = {
     const view = new EditorView({
       parent: codeHost,
       state: EditorState.create({
-        doc: STARTER_BUFFER,
+        doc: "",
         extensions: [
           lineNumbers(),
           highlightActiveLine(),
@@ -360,92 +338,33 @@ pattern = {
       }
     });
 
-    const DEMO_BUFFER = `// Live coding demo using jmon/algo. Cmd/Ctrl+Enter to run.
-//
-// Every track is browser audio by default, so you hear the whole thing
-// without any setup. The optional MIDI section at the bottom shows how
-// to route any track to a DAW via Web MIDI — without leaving the spec.
+    async function fetchBuffers() {
+      // Load starter buffer first so the editor gets meaningful content.
+      try {
+        const r = await fetch('starter.txt');
+        if (r.ok) {
+          STARTER_BUFFER = await r.text();
+          // only replace the editor if it's empty or contains the original placeholder
+          const cur = getCode().trim();
+          if (!cur) setCode(STARTER_BUFFER);
+        } else {
+          console.warn('starter.txt fetch failed:', r.status);
+        }
+      } catch (e) {
+        console.warn('failed to fetch starter.txt', e);
+      }
 
-// Loaded from GitHub via esm.sh, which bundles the file and serves it
-// with the application/javascript MIME type that ES module imports
-// require. jsDelivr's /gh/ passthrough serves text/plain, which the
-// browser refuses to execute as a module.
-scope.algo ??= await import("https://esm.sh/gh/jmonlabs/algo");
-const jm = scope.algo.default ?? scope.algo;
+      try {
+        const r2 = await fetch('demo.txt');
+        if (r2.ok) DEMO_BUFFER = await r2.text();
+        else console.warn('demo.txt fetch failed:', r2.status);
+      } catch (e) {
+        console.warn('failed to fetch demo.txt', e);
+      }
+    }
 
-// Key context collapses the repeated { tonic, mode } across Scale,
-// Ornament, Voice, Progression. Cached so re-runs don't rebuild it.
-scope.key ??= jm.key("C", "major");
-const K = scope.key;
-
-// Advance the seed on every Run so the walks evolve.
-scope.seed = (scope.seed ?? 0) + 1;
-
-// --- Scales (two registers) ----------------------------------------------
-const lowScale  = K.scale().generate({ start: 43, length: 15 }); // C2..C4
-// `start` selects the octave, then snaps back to the tonic — 43 lands on C2,
-// not G2. Generate wide and slice if you need an exact register.
-const highScale = K.scale().generate({ start: 67, length: 14 }); // C4..B5
-
-// --- Walks: two chains, two periodicities --------------------------------
-const violinIdx = new jm.generative.walks.Chain({
-  walkRange: [0, highScale.length - 1], walkStart: 5,
-  walkProbability: [-2, -1, 0, 1, 2], roundTo: 0
-}).line(16, scope.seed);
-
-const bassIdx = new jm.generative.walks.Chain({
-  walkRange: [0, lowScale.length - 1], walkStart: 4,
-  walkProbability: [-1, 0, 1], roundTo: 0
-}).line(4, scope.seed * 17);
-
-// --- Violin: scale walk + mordent on the first note ----------------------
-let violinNotes = violinIdx.map((i, k) => ({
-  pitch: highScale[i], time: k * 0.25, duration: "16n", velocity: 0.6
-}));
-violinNotes = K.ornament({ type: "mordent", parameters: { by: -1 } })
-  .apply([...violinNotes], 0);
-// Try: type:"trill" with parameters:{by:2,trillRate:0.25},
-//      type:"grace_note" with parameters:{graceNoteType:"acciaccatura",gracePitches:[72]},
-//      type:"turn", or type:"arpeggio" with parameters:{arpeggioDegrees:[0,2,4],direction:"up"}.
-
-// --- Bass: one walked scale tone per beat --------------------------------
-const bassNotes = bassIdx.map((i, k) => ({
-  pitch: lowScale[i], time: k, duration: "4n", velocity: 0.5
-}));
-
-// --- Pad: I IV V I triads built from the scale ---------------------------
-const sc = K.scale().generate({ start: 60, length: 8 }); // C4..C5
-const triad = (root) => [sc[root - 1], sc[root + 1], sc[root + 3]];
-const padChords = [
-  { pitch: triad(1), time: 0, duration: "4n", velocity: 0.12 },
-  { pitch: triad(4), time: 1, duration: "4n", velocity: 0.16 },
-  { pitch: triad(5), time: 2, duration: "4n", velocity: 0.18 },
-  { pitch: triad(1), time: 3, duration: "4n", velocity: 0.22 }
-];
-
-pattern = {
-  format: "jmon", version: "1.0", tempo: 96, timeSignature: "4/4",
-  tracks: [
-    // Comment out any track entry to silence it.
-    { label: "drone", notes: [{ pitch: ["C2", "G2", "C3"], time: 0, duration: "1n", velocity: 0.25 }]},
-    // synth.type names a Tone.js class (PolySynth handles the triad chords);
-    // synth.options are forwarded to the constructor.
-    { label: "pad", pan: -0.3, synth: { type: "PolySynth", options: { envelope: { attack: 0.4, decay: 0.4, sustain: 0.7, release: 1.2 } } }, notes: padChords },
-    { label: "bass",   notes: bassNotes },
-    // synth: 40 selects the GM violin SoundFont; first notes may be silent
-    // while samples load from CDN. Drop the synth field for a default Tone.
-    { label: "violin", synth: 40, pan: 0.4, notes: violinNotes }
-
-    // --- Optional: route a track to a DAW over MIDI ---
-    // The JMON spec defines "midiChannel" (0..15). Add it to any track
-    // above to route that track to Web MIDI instead of Tone.js audio.
-    // Then click "Enable MIDI" above and pick your virtual port. The DAW
-    // patch listening on that channel decides what it sounds like.
-    // Example: replace the violin entry with
-    //   { label: "violin", midiChannel: 0, notes: violinNotes }
-  ]
-};
-`;
+    // Prefetch buffers but don't block editor creation.
+    fetchBuffers();
 
     function loadDemo() {
       const cur = getCode().trim();
@@ -453,8 +372,20 @@ pattern = {
       if (cur && !defaultStarter && cur !== DEMO_BUFFER.trim()) {
         if (!confirm("Replace the current buffer with the demo?")) return;
       }
-      setCode(DEMO_BUFFER);
-      setStatus("demo loaded — Enable MIDI, then Run");
+      if (DEMO_BUFFER) {
+        setCode(DEMO_BUFFER);
+        setStatus("demo loaded — Enable MIDI, then Run");
+      } else {
+        // Fallback: attempt to fetch on demand
+        fetch('demo.txt').then(r => r.text()).then(text => {
+          DEMO_BUFFER = text;
+          setCode(DEMO_BUFFER);
+          setStatus("demo loaded — Enable MIDI, then Run");
+        }).catch((e) => {
+          console.warn('failed to load demo on demand', e);
+          setStatus("failed to load demo");
+        });
+      }
     }
 
     document.getElementById("run").addEventListener("click", run);
