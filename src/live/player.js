@@ -175,13 +175,21 @@ function buildTrackSynth(label, spec) {
     { synth: spec }, Tone, null, session.pattern?.customPresets, sound,
   );
   synth.connect(panner);
-  // Tone.Sampler exposes .loaded as a Promise that resolves once all sample
-  // URLs are fetched and decoded. Non-Sampler synths don't have it; treat as
-  // already loaded.
-  const loaded = (synth && typeof synth.loaded?.then === "function")
-    ? synth.loaded
-    : Promise.resolve();
-  return { synth, loaded };
+  return { synth, loaded: synthLoadedPromise(synth) };
+}
+
+// A promise that resolves once a synth's sample data is ready. Non-sampled
+// synths resolve immediately. Tone.Sampler exposes `.loaded` as a *boolean*
+// (true once every buffer is fetched and decoded), not a promise — so an
+// unloaded sampler waits on Tone's global buffer tracker, which settles when
+// all in-flight downloads (including this sampler's) complete.
+function synthLoadedPromise(synth) {
+  if (!synth) return Promise.resolve();
+  if (typeof synth.loaded?.then === "function") return synth.loaded;
+  if (synth.loaded === false && typeof Tone.ToneAudioBuffer?.loaded === "function") {
+    return Tone.ToneAudioBuffer.loaded().catch(() => {});
+  }
+  return Promise.resolve();
 }
 
 function getSynth(trackLabel, trackSynthSpec) {
@@ -265,6 +273,10 @@ function syncTrackPans() {
 
 function playAudioNote(note, time) {
   const synth = getSynth(note.trackLabel, note.trackSynth);
+  // A sampler whose buffers are still downloading throws on triggerAttack.
+  // Dropping the note is the same trade getSynth's fallback path makes:
+  // brief silence on this track instead of an error per scheduled note.
+  if (synth.loaded === false) return;
   const pitch = toToneNote(note.pitch);
   const duration = note.duration || "8n";
   const velocity = note.velocity ?? 0.8;
