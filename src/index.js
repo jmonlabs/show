@@ -109,6 +109,7 @@ export const show = {
   Session,
   createWebMidiSink,
   playSessionTo,
+  noteToBytes,
 
   // The pieces underneath, for anyone assembling their own path.
   createPlayer,
