@@ -91,3 +91,99 @@ test("`loop: true` on the longest track changes nothing", () => {
   assert.deepEqual(timesOf(looped, "drums"), timesOf(plain, "drums"));
   assert.equal(looped.loopDuration, plain.loopDuration);
 });
+
+// ─── sending a Session somewhere else ──────────────────────────────────────
+
+test("a note becomes note-on and note-off bytes, chords included", async () => {
+  const { noteToBytes } = await import("../src/live/sink.js");
+  const single = noteToBytes({ pitch: 60, velocity: 0.8 }, 0);
+  assert.deepEqual(single.on, [0x90, 60, 102], "0x90 with a velocity, on channel 0");
+  assert.deepEqual(single.off, [0x80, 60, 0]);
+
+  const chord = noteToBytes({ pitch: [60, 64, 67], velocity: 1 }, 5);
+  assert.deepEqual(chord.on, [0x95, 60, 127, 0x95, 64, 127, 0x95, 67, 127],
+    "a chord is three note-ons, and the channel is in the status byte");
+  assert.equal(chord.on.filter((_, i) => i % 3 === 0).every((b) => (b & 0x0f) === 5), true);
+
+  assert.equal(noteToBytes({ pitch: 60, velocity: 0 }, 0).on[2], 1,
+    "velocity 0 would read as note-off, so it is floored at 1");
+  assert.equal(noteToBytes({ pitch: 60, velocity: 1 }, 99).on[0] & 0x0f, 15,
+    "a channel above 15 is clamped, because there are only 16");
+});
+
+test("the Web MIDI sink says why, rather than throwing something to decode", async () => {
+  const { createWebMidiSink } = await import("../src/live/sink.js");
+
+  const empty = createWebMidiSink({ access: { outputs: new Map() } });
+  await assert.rejects(() => empty.open(), /no output ports/);
+
+  const missing = createWebMidiSink({ portName: "IAC Driver Bus 2", access: {
+    outputs: new Map([["a", { name: "IAC Driver Bus 1", send() {}, open() {} }]]),
+  } });
+  await assert.rejects(() => missing.open(), /no port named.*IAC Driver Bus 1/s,
+    "and it says what there is");
+
+  const beforeOpen = createWebMidiSink({ access: { outputs: new Map() } });
+  assert.throws(() => beforeOpen.noteOn({ pitch: 60 }), /before open/);
+});
+
+test("the sink sends the bytes it was given", async () => {
+  const { createWebMidiSink } = await import("../src/live/sink.js");
+  const sent = [];
+  const port = { name: "IAC Driver Bus 1", open() {}, send: (bytes) => sent.push([...bytes]) };
+  const sink = createWebMidiSink({ portName: "IAC Driver Bus 1", access: { outputs: new Map([[1, port]]) } });
+  await sink.open();
+  assert.equal(sink.name, "IAC Driver Bus 1");
+  sink.noteOn({ pitch: 62, velocity: 0.5 });
+  sink.noteOff({ pitch: 62, velocity: 0.5 });
+  assert.deepEqual(sent[0], [0x90, 62, 64]);
+  assert.deepEqual(sent[1], [0x80, 62, 0]);
+});
+
+test("a Session plays into any sink, on a clock the caller owns", async () => {
+  const { Session, playSessionTo } = await import("../src/index.js");
+  const { createWebMidiSink: unused } = { createWebMidiSink: null };
+  void unused;
+
+  const session = new Session();
+  session.setPattern({
+    format: "jmon", version: "1.0", tempo: 120,
+    tracks: [{ label: "L", notes: [
+      { pitch: 60, duration: 1, time: 0, velocity: 0.8 },
+      { pitch: 64, duration: 1, time: 1, velocity: 0.8 },
+    ] }],
+  });
+
+  const on = [];
+  const off = [];
+  let opened = 0;
+  const sink = {
+    open: () => { opened++; },
+    noteOn: (n) => on.push(n.pitch),
+    noteOff: (n) => off.push(n.pitch),
+  };
+
+  // A clock we move by hand, so the whole thing is testable with no audio.
+  let now = 0;
+  const transport = playSessionTo(session, sink, { clock: () => now, lookahead: 0.5 });
+
+  await transport.start();
+  assert.equal(opened, 1, "the sink is opened once");
+
+  now = 0;
+  transport.tick();
+  assert.deepEqual(on, [60], "the note at beat 0, scheduled a window early");
+
+  now = 0.5;
+  transport.tick();
+  assert.deepEqual(on, [60], "and not twice while it is still held");
+
+  now = 1.2;
+  transport.tick();
+  assert.deepEqual(on, [60, 64], "the note at beat 1");
+  assert.deepEqual(off, [60], "and the first has been released");
+
+  transport.stop();
+  assert.deepEqual(off, [60, 64], "stopping releases everything still held");
+  assert.equal(transport.pending(), 0);
+});

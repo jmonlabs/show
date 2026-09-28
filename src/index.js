@@ -36,6 +36,7 @@ import { normalizeAudioGraph } from "./audio/normalize.js";
 import { tonejs } from "./tonejs.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
 import { Session } from "./live/session.js";
+import { createWebMidiSink, playSessionTo, noteToBytes } from "./live/sink.js";
 
 export const VERSION = "1.0.0";
 
@@ -51,6 +52,10 @@ export { createPlayer, downloadWav, scoreSVG, tonejs, requireFormat };
 // which guards on `typeof document` — so a headless caller can drive it, and
 // only pays for that one method if it is a browser.
 export { Session };
+
+// Sending a Session somewhere that is not the browser own synthesiser.
+// A sink is three methods, so Web MIDI is one option and not the design.
+export { createWebMidiSink, playSessionTo, noteToBytes };
 
 /**
  * A player element for a piece.
@@ -102,6 +107,8 @@ export const show = {
   // `Session` is the same musical logic with no audio at all, for anyone
   // driving something else from a notebook.
   Session,
+  createWebMidiSink,
+  playSessionTo,
 
   // The pieces underneath, for anyone assembling their own path.
   createPlayer,
