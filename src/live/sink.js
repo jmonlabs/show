@@ -58,6 +58,29 @@ export function noteToBytes(note, channel = 0) {
  * @param {Object} [options.access] - a `MIDIAccess`, for tests
  * @returns {{open:Function, noteOn:Function, noteOff:Function, close:Function, name:string|null}}
  */
+/**
+ * The three bytes of a controller change.
+ *
+ * Shared with the note encoder above because a plugin is driven by both, and two
+ * places that each round a value to 0..127 will eventually disagree about the
+ * rounding.
+ *
+ * @param {Object} change
+ * @param {number} [change.channel=0]
+ * @returns {number[]} `[status, controller, value]`
+ */
+export function ccToBytes(change, channel = 0) {
+  const ch = Math.max(0, Math.min(15, Number(change?.channel ?? channel) | 0));
+  const controller = Number(change?.controller ?? change?.cc);
+  const value = Number(change?.value);
+  if (!Number.isFinite(controller) || !Number.isFinite(value)) {
+    throw new Error(
+      `web midi: cc needs a controller and a value, got ${JSON.stringify(change)}`,
+    );
+  }
+  return [0xb0 | ch, controller & 0x7f, Math.max(0, Math.min(127, Math.round(value * 127)))];
+}
+
 export function createWebMidiSink({ portName, channel = 0, access } = {}) {
   let port = null;
   let name = null;
@@ -114,6 +137,24 @@ export function createWebMidiSink({ portName, channel = 0, access } = {}) {
     noteOff(note) {
       if (!port) throw new Error("web midi: noteOff before open()");
       port.send(new Uint8Array(noteToBytes(note, channel).off));
+    },
+
+    /**
+     * Send a controller change.
+     *
+     * `value` is 0..1, the same range as a note's velocity and the same one a
+     * plugin's fader shows, so `sink.cc({ controller: 74, value: 0.4 })` reads as
+     * "cutoff at 40%". It is scaled to 0..127 here because that is the only
+     * resolution a controller has.
+     *
+     * @param {Object} change
+     * @param {number} change.controller - 0..127
+     * @param {number} change.value - 0..1
+     * @param {number} [change.channel] - defaults to the sink's
+     */
+    cc(change) {
+      if (!port) throw new Error("web midi: cc before open()");
+      port.send(new Uint8Array(ccToBytes(change, channel)));
     },
 
     close() {
