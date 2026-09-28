@@ -87,3 +87,53 @@ test("the walk actually found the package", () => {
         "wav.js was not walked",
     );
 });
+
+// ─── the live-coding surface is reachable ──────────────────────────────────
+//
+// The pattern engine behind the live-coding page lived in live/session.js and
+// was reachable from nowhere: live/player.js holds it, and player.js reads
+// `document` at module level, so it cannot be imported outside a browser. The
+// Session underneath is pure, so it is now part of the package's surface and
+// the studio facade fronts it as `jm.show.Session`.
+
+test("Session is exported from the package and is usable without a DOM", async () => {
+  const mod = await import("../src/index.js");
+  assert.equal(typeof mod.Session, "function", "a named export");
+  assert.equal(typeof mod.show.Session, "function", "and on the namespace object");
+
+  const session = new mod.Session();
+  const pattern = {
+    format: "jmon", version: "1.0", tempo: 120,
+    tracks: [{ label: "L", notes: [
+      { pitch: 62, duration: 1, time: 0, velocity: 0.8 },
+      { pitch: 65, duration: 1, time: 2, velocity: 0.8 },
+    ] }],
+  };
+
+  session.setPattern(pattern);
+  assert.equal(session.getPatternLength(), 2, "two notes");
+  assert.deepEqual(
+    session.getNotesAtTime(0).map((n) => n.pitch), [62],
+    "and it answers what is sounding at a musical time",
+  );
+  assert.deepEqual(session.getNotesAtTime(2).map((n) => n.pitch), [65]);
+
+  // The one method that touches the DOM must not throw when there is none.
+  assert.doesNotThrow(() => session.updateUI(), "updateUI is a no-op without a document");
+  assert.doesNotThrow(() => session.reset(), "and so is anything that calls it");
+});
+
+test("a pattern can be swapped in without disturbing the position", async () => {
+  const { Session } = await import("../src/index.js");
+  const session = new Session();
+  session.setPattern({
+    format: "jmon", version: "1.0", tempo: 120,
+    tracks: [{ label: "L", notes: [{ pitch: 60, duration: 4, time: 0 }] }],
+  });
+  session.next(0);
+  session.setPattern({
+    format: "jmon", version: "1.0", tempo: 120,
+    tracks: [{ label: "L", notes: [{ pitch: 67, duration: 4, time: 0 }] }],
+  }, false);
+  assert.equal(session.getNotesAtTime(0)[0].pitch, 67, "the new pattern is live");
+});

@@ -35,10 +35,22 @@ import * as masterModule from "./audio/master.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 import { tonejs } from "./tonejs.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
+import { Session } from "./live/session.js";
 
 export const VERSION = "1.0.0";
 
 export { createPlayer, downloadWav, scoreSVG, tonejs, requireFormat };
+
+// The pattern engine behind the live-coding page, without the page.
+//
+// `live/player.js` drives a Session and owns a Tone.js graph, and it reads
+// `document` at module level, so it cannot be imported outside a browser. The
+// Session underneath is the part worth having: it holds a pattern, swaps in a
+// new one without interrupting playback, and answers "which notes belong at
+// this musical time". It touches the DOM in exactly one method, `updateUI`,
+// which guards on `typeof document` — so a headless caller can drive it, and
+// only pays for that one method if it is a browser.
+export { Session };
 
 /**
  * A player element for a piece.
@@ -85,6 +97,11 @@ export const show = {
   score,
   wav,
   master,
+
+  // Live coding: the pattern engine, sink-agnostic. `play` is Web Audio;
+  // `Session` is the same musical logic with no audio at all, for anyone
+  // driving something else from a notebook.
+  Session,
 
   // The pieces underneath, for anyone assembling their own path.
   createPlayer,
