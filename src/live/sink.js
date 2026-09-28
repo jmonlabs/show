@@ -79,15 +79,26 @@ export function createWebMidiSink({ portName, channel = 0, access } = {}) {
       const midi = access ?? await navigator.requestMIDIAccess();
       const outputs = [...midi.outputs.values()];
       if (outputs.length === 0) {
+        // Not "create IAC Driver Bus 1": that is the English name, and a
+        // localised macOS calls the same bus "Pilote IAC Bus 1", and it can be
+        // renamed outright. Naming a device that this machine does not call that
+        // sends someone looking for something that is not there. Say what to do.
         throw new Error(
-          "web midi: no output ports. On macOS, create one in Audio MIDI Setup — " +
-          "IAC Driver Bus 1 is the usual loopback to a DAW."
+          "web midi: no output ports. A browser only sees ports the system " +
+          "publishes, so there has to be a virtual one: on macOS, Audio MIDI " +
+          "Setup, then Window > Show IAC Driver, then + to create a bus. It " +
+          "appears as a port in the browser under whatever name the system " +
+          "gives it, and the same name on an input, which is a loopback — " +
+          "anything sent to it comes back, so you can test without a DAW."
         );
       }
       port = portName ? outputs.find((p) => p.name === portName) : outputs[0];
       if (!port) {
         throw new Error(
-          `web midi: no port named "${portName}". Available: ${outputs.map((p) => p.name).join(", ")}`
+          `web midi: no port named "${portName}". Available: ${outputs.map((p) => p.name).join(", ")}` +
+          " — the name is matched exactly, and a bus is often called something " +
+          "like \"IAC Driver Bus 1\", \"Pilote IAC Bus 1\" or whatever it was " +
+          "renamed to, so copy the name from that list rather than typing it."
         );
       }
       if (typeof port.open !== "function") await port.open();
