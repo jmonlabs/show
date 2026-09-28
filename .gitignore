@@ -1,1 +1,6 @@
 node_modules/
+
+# Deno writes this when it resolves the CDN imports in the player. Those are
+# @main URLs, so it pins the bytes of one fetch rather than a version: it looks
+# like determinism and is not. The fix is pinning the refs in the source.
+deno.lock

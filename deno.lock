@@ -1,9 +1,0 @@
-{
-  "version": "5",
-  "remote": {
-    "https://cdn.jsdelivr.net/npm/automation-events@4.0.21/+esm": "4387611e0367c4351546067ff5074c124c021414170b78128aaeb4e3f20b9f0d",
-    "https://cdn.jsdelivr.net/npm/standardized-audio-context@25.3.32/+esm": "6f11a4934eed0d77b3d2cf248e30f3360fc54f0c018655318db31b2a0668c8f3",
-    "https://cdn.jsdelivr.net/npm/tone@14.8.49/+esm": "6cbc9dc51b673747af1dee7ea31b92168a79c3a2f81977e325304eddee7cf0bb",
-    "https://cdn.jsdelivr.net/npm/tslib@2.4.0/+esm": "315b04977e3690c925856fe8ab6dc09026c1f1703c1171c875b69f5fc287d1e9"
-  }
-}

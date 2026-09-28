@@ -87,7 +87,7 @@ test("the sink's own channel is the default, and a per-change one overrides", as
   assert.deepEqual(sent[1], [0xb9, 0x4a, 0x7f], "and an override wins");
 });
 
-test("cc before open is refused, like the note calls", async () => {
+test("cc before open is refused, like the note calls", () => {
   const { port } = recordingPort();
   const sink = sinkOver(port);
   assert.throws(() => sink.cc({ controller: 74, value: 0.5 }), /before open/);

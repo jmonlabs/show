@@ -14,6 +14,7 @@
 
 import { Session } from "./session.js";
 import { createTrackSynth } from "../synth-factory.js";
+import { ccStepsFor } from "./sink.js";
 
 // Tone.js — ESM build via jsDelivr (matches the rest of algo). Tone's ESM
 // build exposes Transport via getTransport() rather than as a namespace
@@ -362,8 +363,10 @@ function scheduleIteration(startBeat) {
   });
 
   // Automation is re-armed for every iteration, so its curve repeats with the
-  // loop the way the notes do.
+  // loop the way the notes do — and so do a track's control changes, for the same
+  // reason. A sweep that ran once would leave the plugin wherever it stopped.
   applyAutomation(session.pattern, startBeat);
+  scheduleTrackControls(session.tracks, startBeat);
 
   const boundary = startBeat + loopDur;
   const triggerAt = Math.max(startBeat, boundary - LOOKAHEAD_BEATS);
@@ -488,6 +491,40 @@ function applyTimeSignatureMap(pattern) {
  * from an `audioGraph` are not built here — the live player wires each track
  * straight to its panner — so those targets are reported rather than guessed at.
  */
+/**
+ * Schedule each track's control changes, once per loop iteration.
+ *
+ * What to send is decided by `ccStepsFor`, where it can be tested without Tone.js
+ * or a browser; this only turns each step into a scheduled send.
+ *
+ * Scheduled per iteration, like the notes and the automation, so a sweep repeats
+ * with the bar. A sweep that ran once would leave the plugin wherever it stopped.
+ *
+ * Sent with an absolute timestamp the way a note is, so the browser times the
+ * step rather than the main thread. A step that lands after its note lets the
+ * plugin start the note on the old cutoff, which is audible on every sweep.
+ *
+ * @param {Array<Object>} tracks
+ * @param {number} [startBeat=0]
+ */
+function scheduleTrackControls(tracks, startBeat = 0) {
+  if (!midiOutput || !Array.isArray(tracks)) return;
+  for (const track of tracks) {
+    for (const step of ccStepsFor(track)) {
+      if (step.error) {
+        setStatus(step.error);
+        continue;
+      }
+      timelineIds.push(
+        Tone.Transport.schedule((time) => {
+          if (!midiOutput) return;
+          midiOutput.send(step.bytes, audioTimeToPerfTime(time) - 1);
+        }, beatsToTicks(startBeat + step.time)),
+      );
+    }
+  }
+}
+
 function applyAutomation(pattern, startBeat = 0) {
   const channels = automationChannels(pattern || {});
   if (channels.length === 0) return;

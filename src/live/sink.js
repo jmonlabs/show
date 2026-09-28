@@ -81,6 +81,48 @@ export function ccToBytes(change, channel = 0) {
   return [0xb0 | ch, controller & 0x7f, Math.max(0, Math.min(127, Math.round(value * 127)))];
 }
 
+/**
+ * The controller changes a track asks for, ready to send.
+ *
+ * A controller is told a value and holds it, so there is nothing to release: what
+ * comes back is one item per step the track lists. Times are beats from the top
+ * of the loop, the same as a note's, so a step written at beat 2 lands with the
+ * note at beat 2.
+ *
+ * An entry with no usable controller or value comes back as an `error` rather
+ * than being dropped, because the caller can report it and this function cannot:
+ * one bad entry in a list of four should not cost the caller the other three, and
+ * silently omitting a step reads as a plugin that ignores the parameter.
+ *
+ * A track with `cc` but no channel comes back with a single error, since there is
+ * nowhere to send any of it. On the audio path a control change means nothing on
+ * its own, so a sweep on a synth-only track is silently absent otherwise.
+ *
+ * @param {Object} track
+ * @returns {Array<{bytes:number[], time:number} | {error:string, time:number}>}
+ */
+export function ccStepsFor(track) {
+  const steps = Array.isArray(track?.cc) ? track.cc : [];
+  if (!steps.length) return [];
+  const label = track.label || track.name || "a track";
+
+  const channel = track.midiChannel ?? track.channel;
+  if (!Number.isInteger(channel)) {
+    return [{ error: `${label} has cc but no midiChannel, so its controllers go nowhere`, time: 0 }];
+  }
+
+  const out = [];
+  for (const step of steps) {
+    const time = Number.isFinite(Number(step?.time)) ? Number(step.time) : 0;
+    try {
+      out.push({ bytes: ccToBytes({ ...step, channel }), time });
+    } catch (err) {
+      out.push({ error: `${label}: ${err.message}`, time });
+    }
+  }
+  return out;
+}
+
 export function createWebMidiSink({ portName, channel = 0, access } = {}) {
   let port = null;
   let name = null;
