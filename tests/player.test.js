@@ -593,6 +593,45 @@ test("a held note goes through holdVoices, in seconds", async () => {
   assert.equal(record.sound.held[0].seconds, 8, "8 beats at 60 BPM is 8 seconds");
 });
 
+test("a loudness curve goes through shapeVoices, in seconds, after holdVoices", async () => {
+  const record = await playWithSound(piece(
+    [{ label: "strings", synth: 48, notes: [{ ...note(60, 0, 4), velocity: 0.5, amplitudeEnvelope: [0, 1, 0.6] }] }],
+    { tempo: 120 },
+  ));
+
+  assert.equal(record.sound.shaped.length, 1);
+  const [call] = record.sound.shaped;
+  assert.equal(call.midi, 60);
+  assert.deepEqual(call.anchors, [
+    { time: 0, value: 0 },
+    { time: 1, value: 1 },
+    { time: 2, value: 0.6 },
+  ], "4 beats at 120 BPM is 2 seconds; values stay multiples of the velocity");
+  assert.deepEqual(call.options, { seconds: 2, velocity: 0.5 });
+  assert.deepEqual(record.sound.order, ["hold", "shape"],
+    "last, because holdVoices stops the voice again and that cancels scheduled gain");
+});
+
+test("a note with no loudness curve is not shaped", async () => {
+  const record = await playWithSound(piece([{ label: "strings", synth: 48, notes: [note(60, 0, 4)] }]));
+  assert.equal(record.sound.shaped.length, 0);
+});
+
+test("a gliding note is shaped after its release is scheduled", async () => {
+  const record = await playWithSound(piece([{
+    label: "violin", synth: 40,
+    notes: [{ ...note(60, 0, 8), articulations: [{ type: "glissando", target: 67 }], amplitudeEnvelope: [0.5, 1] }],
+  }], { tempo: 60 }));
+  assert.deepEqual(record.sound.order, ["bend", "hold", "shape"]);
+});
+
+test("every note of a chord is shaped", async () => {
+  const record = await playWithSound(piece([{
+    label: "strings", synth: 48, notes: [{ ...note(0, 0, 2), pitch: [60, 64, 67], amplitudeEnvelope: [0, 1] }],
+  }]));
+  assert.deepEqual(record.sound.shaped.map((c) => c.midi), [60, 64, 67]);
+});
+
 test("loopSustain: false keeps the player from asking at all", async () => {
   const record = await playWithSound(piece(
     [{ label: "strings", synth: { gm: 48, loopSustain: false }, notes: [note(60, 0, 8)] }],
@@ -630,4 +669,15 @@ test("the provider decides what it recognises, not the player", async () => {
   assert.deepEqual(record.sound.created, [], "it declined, so the player built the synth");
   assert.equal(record.sound.prepared.length, 1, "but it was still asked");
   assert.ok(record.nodes.some((n) => n.type === "MonoSynth"));
+});
+
+test("amplitudeAnchors rebases a loudness curve to seconds from the note's start", async () => {
+  const { amplitudeAnchors } = await import("../src/synth-factory.js");
+  const mods = [
+    { type: "pitch", subtype: "vibrato", start: 4, end: 6 },
+    { type: "amplitude", subtype: "envelope", start: 4, end: 6, anchors: [{ time: 4, value: 0 }, { time: 6, value: 1 }] },
+  ];
+  assert.deepEqual(amplitudeAnchors(mods, 0.5), [{ time: 0, value: 0 }, { time: 1, value: 1 }]);
+  assert.equal(amplitudeAnchors([{ type: "amplitude", subtype: "tremolo" }], 0.5), null,
+    "a tremolo is not a loudness curve");
 });

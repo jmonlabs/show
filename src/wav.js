@@ -7,6 +7,7 @@
  * cycle it used to have with them.
  */
 import {
+	amplitudeAnchors,
 	applyPitchAnchors,
 	createGlideVoice,
 	createTrackSynth,
@@ -252,6 +253,15 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 
 				const mt = note.microtuning || 0;
 
+				// The loudness inside the note, applied last as in the player:
+				// stopping a voice again would cancel it.
+				const loudness = amplitudeAnchors(noteMods, secondsPerQuarterNote);
+				const shape = (midi) => {
+					if (loudness) {
+						sound?.shapeVoices?.(synth, midi, time, loudness, { seconds: noteDuration, velocity: note.velocity || 0.8 });
+					}
+				};
+
 				if (Array.isArray(note.pitch)) {
 					const chordNotes = note.pitch.map((p) =>
 						typeof p === "number"
@@ -259,6 +269,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							: p
 					);
 					synth.triggerAttackRelease(chordNotes, noteDuration, time, note.velocity || 0.8);
+					for (const p of note.pitch) if (typeof p === "number") shape(Math.round(p + mt));
 				} else {
 					const noteName =
 						typeof note.pitch === "number"
@@ -289,6 +300,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							const slid = sound.bendVoices(synth, midi, time, anchorsSec, microtuningCents);
 							if (loopSustain) sound.holdVoices?.(synth, midi, time, noteDuration);
 							synth.triggerRelease(noteName, time + noteDuration);
+							shape(midi);
 							if (!slid && glideVoice) {
 								applyPitchAnchors(glideVoice.detune, time, anchorsSec, microtuningCents);
 								glideVoice.triggerAttackRelease(noteName, noteDuration, time, velocity);
@@ -308,6 +320,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						if (loopSustain && typeof note.pitch === "number") {
 							sound?.holdVoices?.(synth, note.pitch, time, noteDuration);
 						}
+						if (typeof note.pitch === "number") shape(Math.round(note.pitch + mt));
 					}
 				}
 			});

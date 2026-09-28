@@ -238,6 +238,28 @@ export function createGlideVoice(track, ToneLib) {
 }
 
 /**
+ * A note's loudness curve, from its compiled modulations, rebased to seconds
+ * from the note's start — the form `sound.shapeVoices` takes. `null` when the
+ * note has none, which is almost always.
+ *
+ * @param {Array} noteMods — the compiled modulations of one note
+ * @param {number} secondsPerBeat
+ * @returns {Array<{time:number,value:number}>|null} value as a multiple of
+ *   the note's velocity
+ */
+export function amplitudeAnchors(noteMods, secondsPerBeat) {
+  const envelope = (noteMods || []).find(
+    (m) => m.type === "amplitude" && m.subtype === "envelope"
+      && Array.isArray(m.anchors) && m.anchors.length > 0,
+  );
+  if (!envelope) return null;
+  return envelope.anchors.map((a) => ({
+    time: (a.time - envelope.start) * secondsPerBeat,
+    value: a.value,
+  }));
+}
+
+/**
  * Schedule a compiled pitch curve on a `detune` signal (cents), then reset
  * it to the baseline shortly after the curve ends so later notes on the
  * same voice start clean.

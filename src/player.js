@@ -3,6 +3,7 @@ import { requireFormat } from "./format.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 import {
+  amplitudeAnchors,
   applyPitchAnchors,
   createGlideVoice,
   createTrackSynth,
@@ -605,6 +606,14 @@ export function createPlayer(piece, options = {}) {
           (m) => m.type === "pitch" && Array.isArray(m.anchors) && m.anchors.length > 0
         );
 
+        // The loudness inside the note, if it has a shape. It replaces the
+        // voice's whole gain path, so it goes last: stopping a voice again
+        // (holdVoices, triggerRelease) would cancel it.
+        const loudness = amplitudeAnchors(mods, secondsPerQN);
+        const shape = (midi, t) => {
+          if (loudness) sound?.shapeVoices?.(synth, midi, t, loudness, { seconds: duration, velocity });
+        };
+
         // Handle chords
         if (Array.isArray(note.pitch)) {
           const mt = note.microtuning || 0;
@@ -615,6 +624,7 @@ export function createPlayer(piece, options = {}) {
           );
           scheduledEvents.push(ToneLib.Transport.schedule((t) => {
             synth.triggerAttackRelease(chordNotes, duration, t, velocity);
+            for (const p of note.pitch) if (typeof p === "number") shape(Math.round(p + mt), t);
           }, time));
           return;
         }
@@ -657,6 +667,7 @@ export function createPlayer(piece, options = {}) {
               const slid = sound.bendVoices(synth, midi, t, anchorsSec, microtuningCents);
               if (loopSustain) sound.holdVoices?.(synth, midi, t, duration);
               synth.triggerRelease(noteName, t + duration);
+              shape(midi, t);
               // If Tone moved `_activeSources` the note still sounds, just
               // without the slide — the glide voice is the safety net.
               if (!slid && glideVoice) {
@@ -683,6 +694,7 @@ export function createPlayer(piece, options = {}) {
             if (loopSustain && typeof note.pitch === "number") {
               sound?.holdVoices?.(synth, note.pitch, t, duration);
             }
+            if (typeof note.pitch === "number") shape(Math.round(note.pitch + (note.microtuning || 0)), t);
           }, time));
         }
       });

@@ -344,7 +344,7 @@ export async function playAndRecord(piece, options = {}) {
  * @returns {Object} a provider plus `record.sound`, its call log
  */
 export function createRecordingSound(record, Tone) {
-  record.sound = { created: [], prepared: [], bent: [], held: [] };
+  record.sound = { created: [], prepared: [], bent: [], held: [], shaped: [], order: [] };
 
   const gmProgram = (spec) => {
     if (typeof spec === "number") return spec;
@@ -365,10 +365,17 @@ export function createRecordingSound(record, Tone) {
     },
     bendVoices(node, midi, time, anchors, baseCents) {
       record.sound.bent.push({ node, midi, time, anchors, baseCents });
+      record.sound.order.push("bend");
       return true;
     },
     holdVoices(node, midi, time, seconds) {
       record.sound.held.push({ node, midi, time, seconds });
+      record.sound.order.push("hold");
+      return true;
+    },
+    shapeVoices(node, midi, time, anchors, options) {
+      record.sound.shaped.push({ node, midi, time, anchors, options });
+      record.sound.order.push("shape");
       return true;
     },
   };
