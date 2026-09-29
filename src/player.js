@@ -631,7 +631,7 @@ export function createPlayer(piece, options = {}) {
               return;
             }
             chordNotes.forEach((name, k) => {
-              synth.triggerAttack(name, t, velocity);
+              synth.triggerAttack(name, t, velocity, duration);
               if (typeof note.pitch[k] === "number") finish(name, Math.round(note.pitch[k] + mt), t);
               else synth.triggerRelease(name, t + duration);
             });
@@ -673,7 +673,7 @@ export function createPlayer(piece, options = {}) {
               : ToneLib.Frequency(noteName).toMidi();
 
             scheduledEvents.push(ToneLib.Transport.schedule((t) => {
-              synth.triggerAttack(noteName, t, velocity);
+              synth.triggerAttack(noteName, t, velocity, duration);
               const slid = sound.bendVoices(synth, midi, t, anchorsSec, microtuningCents);
               finish(noteName, midi, t);
               // If Tone moved `_activeSources` the note still sounds, just
@@ -697,7 +697,7 @@ export function createPlayer(piece, options = {}) {
 
           scheduledEvents.push(ToneLib.Transport.schedule((t) => {
             if (sampled && typeof note.pitch === "number") {
-              synth.triggerAttack(playNote, t, velocity);
+              synth.triggerAttack(playNote, t, velocity, duration);
               finish(playNote, Math.round(note.pitch + (note.microtuning || 0)), t);
             } else {
               synth.triggerAttackRelease(playNote, duration, t, velocity);

@@ -249,6 +249,10 @@ export function createGlideVoice(track, ToneLib) {
  * (`shapeVoices`) while it is still listed, and the note is released only if
  * the shaping did not already let it go — a later stop would cancel the curve.
  *
+ * `triggerAttack` is given the note's duration as a fourth argument: Tone's
+ * instruments ignore it, and an SFZ instrument plays a short note with its
+ * staccato recording.
+ *
  * @param {Object} synth — the track's Sampler
  * @param {Object} sound — the sampled-instrument provider
  * @param {Object} note

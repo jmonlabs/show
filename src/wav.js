@@ -272,7 +272,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						synth.triggerAttackRelease(chordNotes, noteDuration, time, velocity);
 					} else {
 						chordNotes.forEach((name, k) => {
-							synth.triggerAttack(name, time, velocity);
+							synth.triggerAttack(name, time, velocity, noteDuration);
 							if (typeof note.pitch[k] === "number") finish(name, Math.round(note.pitch[k] + mt));
 							else synth.triggerRelease(name, time + noteDuration);
 						});
@@ -302,7 +302,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							const midi = typeof note.pitch === "number"
 								? note.pitch
 								: Tone.Frequency(noteName).toMidi();
-							synth.triggerAttack(noteName, time, velocity);
+							synth.triggerAttack(noteName, time, velocity, noteDuration);
 							const slid = sound.bendVoices(synth, midi, time, anchorsSec, microtuningCents);
 							finish(noteName, midi);
 							if (!slid && glideVoice) {
@@ -319,7 +319,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							? Tone.Frequency(note.pitch + mt, "midi").toFrequency()
 							: noteName;
 						if (sampled && typeof note.pitch === "number") {
-							synth.triggerAttack(playNote, time, velocity);
+							synth.triggerAttack(playNote, time, velocity, noteDuration);
 							finish(playNote, Math.round(note.pitch + mt));
 						} else {
 							synth.triggerAttackRelease(playNote, noteDuration, time, velocity);
