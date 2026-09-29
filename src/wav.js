@@ -11,6 +11,7 @@ import {
 	applyPitchAnchors,
 	createGlideVoice,
 	finishNote,
+	sendControllerMove,
 	createTrackSynth,
 	hasDetuneParam,
 	resolveConnectTarget,
@@ -232,6 +233,12 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 					transport.schedule(() => { tremoloEffect.wet.value = 0; }, endTime);
 				}
 			});
+
+			// Controller moves, before the notes: one at a note's instant is
+			// already set when the note starts.
+			for (const move of fmt.controllerEvents?.(track, piece, trackIndex) ?? []) {
+				sendControllerMove(synth, move, move.time * secondsPerQuarterNote);
+			}
 
 			// Build glissando lookup
 			const modsByNote = {};

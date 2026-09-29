@@ -7,6 +7,7 @@ import {
   applyPitchAnchors,
   createGlideVoice,
   finishNote,
+  sendControllerMove,
   createTrackSynth,
   hasDetuneParam,
   resolveConnectTarget,
@@ -412,9 +413,16 @@ export function createPlayer(piece, options = {}) {
         && trackSynthSpec.loopSustain === false
       );
 
+      // Every controller move the piece asks of this track's instrument, if
+      // it takes controllers (a SoundFont or SFZ instrument; Tone's synths
+      // have none).
+      const controls = typeof synth.controllerChange === "function"
+        ? fmt.controllerEvents?.(originalTrack, piece, originalTrackIndex) ?? []
+        : [];
+
       return {
         synth, glideVoice, vibratoEffect, tremoloEffect,
-        modulations, partEvents, secondsPerQN, loopSustain,
+        modulations, partEvents, secondsPerQN, loopSustain, controls,
       };
     });
 
@@ -552,7 +560,13 @@ export function createPlayer(piece, options = {}) {
     scheduleTimeSignatureChanges(toSeconds);
     scheduleAutomation(toSeconds);
 
-    trackConfigs.forEach(({ synth, glideVoice, vibratoEffect, tremoloEffect, modulations, partEvents, secondsPerQN, loopSustain }) => {
+    trackConfigs.forEach(({ synth, glideVoice, vibratoEffect, tremoloEffect, modulations, partEvents, secondsPerQN, loopSustain, controls }) => {
+      // Controller moves, before the notes: one at a note's instant is
+      // already set when the note starts.
+      for (const move of controls) {
+        scheduledEvents.push(ToneLib.Transport.schedule((t) => sendControllerMove(synth, move, t), toSeconds(move.time)));
+      }
+
       // Schedule vibrato/tremolo enable/disable
       modulations.forEach((mod) => {
         const startTime = toSeconds(mod.start);

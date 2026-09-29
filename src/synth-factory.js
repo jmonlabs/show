@@ -271,6 +271,24 @@ export function finishNote(synth, sound, { name, midi, time, seconds, velocity, 
 }
 
 /**
+ * Send one controller move (see io's controllerEvents) to a track's
+ * instrument: a control change, a pitch bend or channel pressure. Only an
+ * instrument that takes them — a SoundFont or SFZ instrument — does anything
+ * with it; Tone's own synths have no controllers, and a lane meant for one of
+ * their parameters goes through `converterHints` instead.
+ *
+ * @param {Object} synth
+ * @param {{type: string, controller?: number, value: number}} move - value
+ *   0..1, or -1..1 for a pitch bend
+ * @param {number} time - seconds
+ */
+export function sendControllerMove(synth, move, time) {
+  if (move.type === "cc") synth.controllerChange?.(move.controller, move.value, time);
+  else if (move.type === "pitchBend") synth.pitchBend?.(move.value, time);
+  else if (move.type === "aftertouch") synth.channelPressure?.(move.value, time);
+}
+
+/**
  * A note's loudness curve, from its compiled modulations, rebased to seconds
  * from the note's start — the form `sound.shapeVoices` takes. `null` when the
  * note has none, which is almost always.

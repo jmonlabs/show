@@ -723,3 +723,31 @@ test("an instrument that says when it is ready is awaited, and handlesVoices dec
     restore();
   }
 });
+
+test("an instrument that takes controllers gets the piece's controller moves, before the notes", async () => {
+  const restore = installFakeBrowser();
+  try {
+    const { Tone, record } = createFakeTone();
+    globalThis.Tone = Tone;
+    const received = [];
+    const instrument = {
+      connect() { return this; }, toDestination() { return this; }, dispose() {},
+      triggerAttackRelease: (...args) => received.push(["note", ...args]),
+      controllerChange: (controller, value, time) => received.push(["cc", controller, value, time]),
+      pitchBend: (value, time) => received.push(["bend", value, time]),
+    };
+    const sound = { create: () => ({ node: instrument, isLoadable: false }) };
+    const { createPlayer } = await import("../src/player.js?controllers");
+    const ui = createPlayer(piece([{
+      label: "lead", synth: { sf2: "bank.sf2", program: 40 },
+      cc: [{ time: 0, controller: 1, value: 0.25 }],
+      notes: [note(60, 0), { ...note(62, 1), modulations: [{ type: "pitchBend", value: 4096, time: "8n" }] }],
+    }]), { Tone, sound, io });
+    await collectHandlers(ui).find((h) => typeof h.click === "function").click();
+    for (const event of record.scheduled) event.callback(event.time ?? 0);
+    assert.deepEqual(received[0].slice(0, 3), ["cc", 1, 0.25], "the mod wheel first, so the note starts with it set");
+    assert.ok(received.some((r) => r[0] === "bend" && r[1] === 0.5), "and the bend inside the second note");
+  } finally {
+    restore();
+  }
+});
