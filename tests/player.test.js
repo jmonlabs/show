@@ -690,3 +690,36 @@ test("amplitudeAnchors rebases a loudness curve to seconds from the note's start
   assert.equal(amplitudeAnchors([{ type: "amplitude", subtype: "tremolo" }], 0.5), null,
     "a tremolo is not a loudness curve");
 });
+
+test("an instrument that says when it is ready is awaited, and handlesVoices decides the split", async () => {
+  // A SoundFont channel (jmon/sound) is ready once its synthesizer has
+  // loaded the bank: Tone.loaded() knows nothing of it.
+  const restore = installFakeBrowser();
+  try {
+    const { Tone, record } = createFakeTone();
+    globalThis.Tone = Tone;
+    let ready = false;
+    const calls = [];
+    const node = {
+      isSoundfont: true,
+      loaded: new Promise((resolve) => setTimeout(() => { ready = true; resolve(); }, 20)),
+      connect() { return this; }, disconnect() { return this; }, dispose() {},
+      triggerAttack: (n, t) => calls.push(["attack", n, t, ready]),
+      triggerRelease: (n, t) => calls.push(["release", n, t]),
+      triggerAttackRelease: () => calls.push(["attackRelease"]),
+    };
+    const sound = {
+      create: () => ({ node, isLoadable: true }),
+      handlesVoices: (n) => n === node,
+    };
+    const { createPlayer } = await import(`../src/player.js?sf=${Date.now()}`);
+    const ui = createPlayer(piece([{ label: "v", synth: 40, notes: [note(69, 0, 2)] }], { tempo: 60 }), { Tone, sound, io });
+    await collectHandlers(ui).find((h) => typeof h.click === "function").click();
+    for (const event of record.scheduled) event.callback(0);
+    assert.deepEqual(calls.map((c) => c[0]), ["attack", "release"], "played as attack then release");
+    assert.equal(calls[0][3], true, "only once the instrument was ready");
+    assert.equal(calls[1][2], 2, "released at the note's end");
+  } finally {
+    restore();
+  }
+});

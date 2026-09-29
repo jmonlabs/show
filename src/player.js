@@ -418,8 +418,10 @@ export function createPlayer(piece, options = {}) {
       };
     });
 
-    // Wait for all samplers to finish loading
+    // Wait for all samplers to finish loading, and for any instrument that
+    // says when it is ready (a SoundFont channel resolves `loaded`).
     await ToneLib.loaded();
+    await Promise.all(activeSynths.map((s) => s?.loaded).filter((l) => typeof l?.then === "function"));
   }
 
   // ── Schedule events on the transport (cheap — redo on seek) ──────
@@ -611,7 +613,7 @@ export function createPlayer(piece, options = {}) {
         const loudness = amplitudeAnchors(mods, secondsPerQN);
         // A sampled instrument plays attack and release separately, so its
         // provider can hold and shape the voice in between (see finishNote).
-        const sampled = !!sound?.canResample?.(synth);
+        const sampled = !!(sound?.handlesVoices ?? sound?.canResample)?.(synth);
         const finish = (name, midi, t) =>
           finishNote(synth, sound, { name, midi, time: t, seconds: duration, velocity, loopSustain, loudness });
 

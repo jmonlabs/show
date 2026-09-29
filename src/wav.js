@@ -257,7 +257,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 				// The loudness inside the note, and attack and release played
 				// separately on a sampled instrument, as in the player (finishNote).
 				const loudness = amplitudeAnchors(noteMods, secondsPerQuarterNote);
-				const sampled = !!sound?.canResample?.(synth);
+				const sampled = !!(sound?.handlesVoices ?? sound?.canResample)?.(synth);
 				const velocity = note.velocity || 0.8;
 				const finish = (name, midi) =>
 					finishNote(synth, sound, { name, midi, time, seconds: noteDuration, velocity, loopSustain, loudness });
