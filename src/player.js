@@ -6,6 +6,7 @@ import {
   amplitudeAnchors,
   applyPitchAnchors,
   createGlideVoice,
+  finishNote,
   createTrackSynth,
   hasDetuneParam,
   resolveConnectTarget,
@@ -606,13 +607,13 @@ export function createPlayer(piece, options = {}) {
           (m) => m.type === "pitch" && Array.isArray(m.anchors) && m.anchors.length > 0
         );
 
-        // The loudness inside the note, if it has a shape. It replaces the
-        // voice's whole gain path, so it goes last: stopping a voice again
-        // (holdVoices, triggerRelease) would cancel it.
+        // The loudness inside the note, if it has a shape.
         const loudness = amplitudeAnchors(mods, secondsPerQN);
-        const shape = (midi, t) => {
-          if (loudness) sound?.shapeVoices?.(synth, midi, t, loudness, { seconds: duration, velocity });
-        };
+        // A sampled instrument plays attack and release separately, so its
+        // provider can hold and shape the voice in between (see finishNote).
+        const sampled = !!sound?.canResample?.(synth);
+        const finish = (name, midi, t) =>
+          finishNote(synth, sound, { name, midi, time: t, seconds: duration, velocity, loopSustain, loudness });
 
         // Handle chords
         if (Array.isArray(note.pitch)) {
@@ -623,8 +624,15 @@ export function createPlayer(piece, options = {}) {
               : p
           );
           scheduledEvents.push(ToneLib.Transport.schedule((t) => {
-            synth.triggerAttackRelease(chordNotes, duration, t, velocity);
-            for (const p of note.pitch) if (typeof p === "number") shape(Math.round(p + mt), t);
+            if (!sampled) {
+              synth.triggerAttackRelease(chordNotes, duration, t, velocity);
+              return;
+            }
+            chordNotes.forEach((name, k) => {
+              synth.triggerAttack(name, t, velocity);
+              if (typeof note.pitch[k] === "number") finish(name, Math.round(note.pitch[k] + mt), t);
+              else synth.triggerRelease(name, t + duration);
+            });
           }, time));
           return;
         }
@@ -665,9 +673,7 @@ export function createPlayer(piece, options = {}) {
             scheduledEvents.push(ToneLib.Transport.schedule((t) => {
               synth.triggerAttack(noteName, t, velocity);
               const slid = sound.bendVoices(synth, midi, t, anchorsSec, microtuningCents);
-              if (loopSustain) sound.holdVoices?.(synth, midi, t, duration);
-              synth.triggerRelease(noteName, t + duration);
-              shape(midi, t);
+              finish(noteName, midi, t);
               // If Tone moved `_activeSources` the note still sounds, just
               // without the slide — the glide voice is the safety net.
               if (!slid && glideVoice) {
@@ -688,13 +694,12 @@ export function createPlayer(piece, options = {}) {
             : noteName;
 
           scheduledEvents.push(ToneLib.Transport.schedule((t) => {
-            synth.triggerAttackRelease(playNote, duration, t, velocity);
-            // A sampled instrument's recording is finite; the provider loops
-            // its sustain so a long note does not end in silence.
-            if (loopSustain && typeof note.pitch === "number") {
-              sound?.holdVoices?.(synth, note.pitch, t, duration);
+            if (sampled && typeof note.pitch === "number") {
+              synth.triggerAttack(playNote, t, velocity);
+              finish(playNote, Math.round(note.pitch + (note.microtuning || 0)), t);
+            } else {
+              synth.triggerAttackRelease(playNote, duration, t, velocity);
             }
-            if (typeof note.pitch === "number") shape(Math.round(note.pitch + (note.microtuning || 0)), t);
           }, time));
         }
       });

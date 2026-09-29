@@ -591,6 +591,11 @@ test("a held note goes through holdVoices, in seconds", async () => {
   assert.equal(record.sound.held.length, 1);
   assert.equal(record.sound.held[0].midi, 60);
   assert.equal(record.sound.held[0].seconds, 8, "8 beats at 60 BPM is 8 seconds");
+  // Regression: holdVoices ran after triggerAttackRelease, which had already
+  // taken the voice off the Sampler's list, so no note was ever held and
+  // every long note stopped when its recording ran out.
+  assert.equal(record.sound.held[0].voices, 1, "the voice is still sounding when it is held");
+  assert.deepEqual(record.released, [{ pitch: "C4", time: 8 }], "and released at the note's end");
 });
 
 test("a loudness curve goes through shapeVoices, in seconds, after holdVoices", async () => {
@@ -610,6 +615,8 @@ test("a loudness curve goes through shapeVoices, in seconds, after holdVoices", 
   assert.deepEqual(call.options, { seconds: 2, velocity: 0.5 });
   assert.deepEqual(record.sound.order, ["hold", "shape"],
     "last, because holdVoices stops the voice again and that cancels scheduled gain");
+  assert.equal(call.voices, 1, "the voice is still sounding when it is shaped");
+  assert.deepEqual(record.released, [], "and the provider lets it go: a release would cancel the curve");
 });
 
 test("a note with no loudness curve is not shaped", async () => {
@@ -623,6 +630,7 @@ test("a gliding note is shaped after its release is scheduled", async () => {
     notes: [{ ...note(60, 0, 8), articulations: [{ type: "glissando", target: 67 }], amplitudeEnvelope: [0.5, 1] }],
   }], { tempo: 60 }));
   assert.deepEqual(record.sound.order, ["bend", "hold", "shape"]);
+  assert.ok(record.sound.shaped[0].voices > 0, "the gliding voice is still there to shape");
 });
 
 test("every note of a chord is shaped", async () => {
@@ -630,6 +638,7 @@ test("every note of a chord is shaped", async () => {
     label: "strings", synth: 48, notes: [{ ...note(0, 0, 2), pitch: [60, 64, 67], amplitudeEnvelope: [0, 1] }],
   }]));
   assert.deepEqual(record.sound.shaped.map((c) => c.midi), [60, 64, 67]);
+  assert.ok(record.sound.shaped.every((c) => c.voices === 1), "each chord tone is found");
 });
 
 test("loopSustain: false keeps the player from asking at all", async () => {

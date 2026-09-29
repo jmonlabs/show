@@ -238,6 +238,35 @@ export function createGlideVoice(track, ToneLib) {
 }
 
 /**
+ * Let a sampled instrument's provider work on a note it has just started,
+ * then release the note.
+ *
+ * Call it right after `triggerAttack`. Tone's Sampler takes a voice off its
+ * list of sounding notes as soon as a release is *scheduled*, so with
+ * `triggerAttackRelease` the provider found nothing: long notes were never
+ * held past the end of their recording and loudness curves never applied.
+ * Here the provider holds the voice (`holdVoices`) and shapes it
+ * (`shapeVoices`) while it is still listed, and the note is released only if
+ * the shaping did not already let it go — a later stop would cancel the curve.
+ *
+ * @param {Object} synth — the track's Sampler
+ * @param {Object} sound — the sampled-instrument provider
+ * @param {Object} note
+ * @param {string|number} note.name — what was passed to triggerAttack
+ * @param {number} note.midi — the MIDI number the Sampler keys the voice by
+ * @param {number} note.time — start, in seconds
+ * @param {number} note.seconds — duration, in seconds
+ * @param {number} note.velocity
+ * @param {boolean} note.loopSustain — whether the track lets the sustain loop
+ * @param {Array|null} note.loudness — from amplitudeAnchors
+ */
+export function finishNote(synth, sound, { name, midi, time, seconds, velocity, loopSustain, loudness }) {
+  if (loopSustain) sound?.holdVoices?.(synth, midi, time, seconds);
+  const shaped = loudness ? sound?.shapeVoices?.(synth, midi, time, loudness, { seconds, velocity }) : false;
+  if (!shaped) synth.triggerRelease(name, time + seconds);
+}
+
+/**
  * A note's loudness curve, from its compiled modulations, rebased to seconds
  * from the note's start — the form `sound.shapeVoices` takes. `null` when the
  * note has none, which is almost always.

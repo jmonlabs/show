@@ -127,6 +127,7 @@ export function createFakeTone() {
     stops: [],         // { time } — explicit stops scheduled on a voice
     params: [],        // { param, value, time, kind }
     triggered: [],     // { pitch, duration, time, velocity }
+    released: [],      // { pitch, time } — a Sampler's scheduled releases
     disposed: [],      // { type } — nodes torn down via dispose()
     transport: { starts: 0, stops: 0 },
   };
@@ -193,11 +194,24 @@ export function createFakeTone() {
       }
       return this;
     }
+    // Like Tone's: the release is scheduled and the voices are taken off the
+    // sounding list at once, not when the note ends. A hook called after
+    // triggerAttackRelease finds nothing.
     triggerAttackRelease(notes, duration, time, velocity) {
       this.triggerAttack(notes, time, velocity);
+      this.triggerRelease(notes, time + duration);
       return this;
     }
-    triggerRelease() { return this; }
+    triggerRelease(notes, time) {
+      for (const note of [].concat(notes)) {
+        const midi = Math.round(noteNameToMidi(note));
+        if (this._activeSources.get(midi)?.length) {
+          record.released.push({ pitch: note, time });
+          this._activeSources.set(midi, []);
+        }
+      }
+      return this;
+    }
   }
 
   /** PolySynth, likewise: options are set through `set()`, not a Signal. */
@@ -343,6 +357,8 @@ export async function playAndRecord(piece, options = {}) {
  * @param {Object} [Tone] - the fake Tone, so it can build a real fake Sampler
  * @returns {Object} a provider plus `record.sound`, its call log
  */
+const voicesOf = (node, midi) => node?._activeSources?.get?.(Math.round(midi))?.length ?? 0;
+
 export function createRecordingSound(record, Tone) {
   record.sound = { created: [], prepared: [], bent: [], held: [], shaped: [], order: [] };
 
@@ -363,20 +379,28 @@ export function createRecordingSound(record, Tone) {
       record.sound.prepared.push(specs);
       return "https://example.test/samples";
     },
+    // Each hook records how many sounding voices it found: a hook called when
+    // the Sampler has already let the note go reaches nothing.
+    canResample(node) {
+      return typeof node?._activeSources?.get === "function";
+    },
     bendVoices(node, midi, time, anchors, baseCents) {
-      record.sound.bent.push({ node, midi, time, anchors, baseCents });
+      record.sound.bent.push({ node, midi, time, anchors, baseCents, voices: voicesOf(node, midi) });
       record.sound.order.push("bend");
       return true;
     },
     holdVoices(node, midi, time, seconds) {
-      record.sound.held.push({ node, midi, time, seconds });
+      record.sound.held.push({ node, midi, time, seconds, voices: voicesOf(node, midi) });
       record.sound.order.push("hold");
       return true;
     },
+    // Like the real one, a shaped voice is let go here and taken off the list.
     shapeVoices(node, midi, time, anchors, options) {
-      record.sound.shaped.push({ node, midi, time, anchors, options });
+      const voices = voicesOf(node, midi);
+      record.sound.shaped.push({ node, midi, time, anchors, options, voices });
       record.sound.order.push("shape");
-      return true;
+      if (voices > 0) node._activeSources.set(Math.round(midi), []);
+      return voices > 0;
     },
   };
 }

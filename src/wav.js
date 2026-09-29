@@ -10,6 +10,7 @@ import {
 	amplitudeAnchors,
 	applyPitchAnchors,
 	createGlideVoice,
+	finishNote,
 	createTrackSynth,
 	hasDetuneParam,
 	resolveConnectTarget,
@@ -253,14 +254,13 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 
 				const mt = note.microtuning || 0;
 
-				// The loudness inside the note, applied last as in the player:
-				// stopping a voice again would cancel it.
+				// The loudness inside the note, and attack and release played
+				// separately on a sampled instrument, as in the player (finishNote).
 				const loudness = amplitudeAnchors(noteMods, secondsPerQuarterNote);
-				const shape = (midi) => {
-					if (loudness) {
-						sound?.shapeVoices?.(synth, midi, time, loudness, { seconds: noteDuration, velocity: note.velocity || 0.8 });
-					}
-				};
+				const sampled = !!sound?.canResample?.(synth);
+				const velocity = note.velocity || 0.8;
+				const finish = (name, midi) =>
+					finishNote(synth, sound, { name, midi, time, seconds: noteDuration, velocity, loopSustain, loudness });
 
 				if (Array.isArray(note.pitch)) {
 					const chordNotes = note.pitch.map((p) =>
@@ -268,8 +268,15 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							? (mt ? Tone.Frequency(p + mt, "midi").toFrequency() : Tone.Frequency(p, "midi").toNote())
 							: p
 					);
-					synth.triggerAttackRelease(chordNotes, noteDuration, time, note.velocity || 0.8);
-					for (const p of note.pitch) if (typeof p === "number") shape(Math.round(p + mt));
+					if (!sampled) {
+						synth.triggerAttackRelease(chordNotes, noteDuration, time, velocity);
+					} else {
+						chordNotes.forEach((name, k) => {
+							synth.triggerAttack(name, time, velocity);
+							if (typeof note.pitch[k] === "number") finish(name, Math.round(note.pitch[k] + mt));
+							else synth.triggerRelease(name, time + noteDuration);
+						});
+					}
 				} else {
 					const noteName =
 						typeof note.pitch === "number"
@@ -287,7 +294,6 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							time: (a.time - pitchCurve.start) * secondsPerQuarterNote,
 							value: a.value,
 						}));
-						const velocity = note.velocity || 0.8;
 
 						if (hasDetuneParam(synth)) {
 							applyPitchAnchors(synth.detune, time, anchorsSec, microtuningCents);
@@ -298,9 +304,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 								: Tone.Frequency(noteName).toMidi();
 							synth.triggerAttack(noteName, time, velocity);
 							const slid = sound.bendVoices(synth, midi, time, anchorsSec, microtuningCents);
-							if (loopSustain) sound.holdVoices?.(synth, midi, time, noteDuration);
-							synth.triggerRelease(noteName, time + noteDuration);
-							shape(midi);
+							finish(noteName, midi);
 							if (!slid && glideVoice) {
 								applyPitchAnchors(glideVoice.detune, time, anchorsSec, microtuningCents);
 								glideVoice.triggerAttackRelease(noteName, noteDuration, time, velocity);
@@ -314,13 +318,12 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						const playNote = mt
 							? Tone.Frequency(note.pitch + mt, "midi").toFrequency()
 							: noteName;
-						synth.triggerAttackRelease(playNote, noteDuration, time, note.velocity || 0.8);
-						// Loop a sampled instrument's sustain so a long note does
-						// not run out of recording, as in the live player.
-						if (loopSustain && typeof note.pitch === "number") {
-							sound?.holdVoices?.(synth, note.pitch, time, noteDuration);
+						if (sampled && typeof note.pitch === "number") {
+							synth.triggerAttack(playNote, time, velocity);
+							finish(playNote, Math.round(note.pitch + mt));
+						} else {
+							synth.triggerAttackRelease(playNote, noteDuration, time, velocity);
 						}
-						if (typeof note.pitch === "number") shape(Math.round(note.pitch + mt));
 					}
 				}
 			});
