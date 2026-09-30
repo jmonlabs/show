@@ -53,7 +53,7 @@ export class Tonejs {
                 pitch: note.pitch,
                 duration: note.duration,
                 velocity: note.velocity || 0.8,
-                microtuning: note.microtuning // Pass through microtuning in semitones
+                tuning: note.tuning ?? note.microtuning, // the note's tuning, in semitones
             }))
         }));
     }

@@ -617,7 +617,7 @@ export function createPlayer(piece, options = {}) {
 
         // Handle chords
         if (Array.isArray(note.pitch)) {
-          const mt = note.microtuning || 0;
+          const mt = note.tuning ?? note.microtuning ?? 0;
           const chordNotes = note.pitch.map((p) =>
             typeof p === "number"
               ? (mt ? ToneLib.Frequency(p + mt, "midi").toFrequency() : ToneLib.Frequency(p, "midi").toNote())
@@ -651,7 +651,7 @@ export function createPlayer(piece, options = {}) {
         //      neither, so the slide moves to a stand-in routed through the
         //      same effect chain.
         if (pitchCurve && (hasDetuneParam(synth) || sound?.bendVoices || glideVoice)) {
-          const microtuningCents = (note.microtuning || 0) * 100;
+          const tuningCents = (note.tuning ?? note.microtuning ?? 0) * 100;
           // Anchor times are absolute beats; rebase to the note start.
           const anchorsSec = pitchCurve.anchors.map((a) => ({
             time: (a.time - pitchCurve.start) * secondsPerQN,
@@ -660,7 +660,7 @@ export function createPlayer(piece, options = {}) {
 
           if (hasDetuneParam(synth)) {
             scheduledEvents.push(ToneLib.Transport.schedule((t) => {
-              applyPitchAnchors(synth.detune, t, anchorsSec, microtuningCents);
+              applyPitchAnchors(synth.detune, t, anchorsSec, tuningCents);
               synth.triggerAttackRelease(noteName, duration, t, velocity);
             }, time));
           } else if (sound?.bendVoices) {
@@ -672,31 +672,32 @@ export function createPlayer(piece, options = {}) {
 
             scheduledEvents.push(ToneLib.Transport.schedule((t) => {
               synth.triggerAttack(noteName, t, velocity);
-              const slid = sound.bendVoices(synth, midi, t, anchorsSec, microtuningCents);
+              const slid = sound.bendVoices(synth, midi, t, anchorsSec, tuningCents);
               finish(noteName, midi, t);
               // If Tone moved `_activeSources` the note still sounds, just
               // without the slide — the glide voice is the safety net.
               if (!slid && glideVoice) {
-                applyPitchAnchors(glideVoice.detune, t, anchorsSec, microtuningCents);
+                applyPitchAnchors(glideVoice.detune, t, anchorsSec, tuningCents);
                 glideVoice.triggerAttackRelease(noteName, duration, t, velocity);
               }
             }, time));
           } else {
             scheduledEvents.push(ToneLib.Transport.schedule((t) => {
-              applyPitchAnchors(glideVoice.detune, t, anchorsSec, microtuningCents);
+              applyPitchAnchors(glideVoice.detune, t, anchorsSec, tuningCents);
               glideVoice.triggerAttackRelease(noteName, duration, t, velocity);
             }, time));
           }
         } else {
-          // Normal note — apply microtuning by converting to frequency
-          const playNote = note.microtuning
-            ? ToneLib.Frequency(note.pitch + note.microtuning, "midi").toFrequency()
+          // Normal note — a tuned note is played at its frequency
+          const tuning = note.tuning ?? note.microtuning ?? 0;
+          const playNote = tuning
+            ? ToneLib.Frequency(note.pitch + tuning, "midi").toFrequency()
             : noteName;
 
           scheduledEvents.push(ToneLib.Transport.schedule((t) => {
             if (sampled && typeof note.pitch === "number") {
               synth.triggerAttack(playNote, t, velocity);
-              finish(playNote, Math.round(note.pitch + (note.microtuning || 0)), t);
+              finish(playNote, Math.round(note.pitch + tuning), t);
             } else {
               synth.triggerAttackRelease(playNote, duration, t, velocity);
             }
