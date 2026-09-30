@@ -319,7 +319,7 @@ export function amplitudeAnchors(noteMods, secondsPerBeat) {
  * @param {number} startTime — absolute time in seconds of the note start
  * @param {Array<{time:number,value:number}>} anchors — time in seconds
  *   relative to `startTime`, value in cents relative to the written pitch
- * @param {number} [baseCents=0] — baseline detune (e.g. microtuning * 100)
+ * @param {number} [baseCents=0] — baseline detune (e.g. tuning * 100)
  * @param {number} [resetDelay=0.05] — seconds after the last anchor at
  *   which the signal returns to `baseCents`
  */

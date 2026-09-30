@@ -259,7 +259,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 					(m) => m.type === "pitch" && Array.isArray(m.anchors) && m.anchors.length > 0
 				);
 
-				const mt = note.microtuning || 0;
+				const mt = note.tuning ?? note.microtuning ?? 0;
 
 				// The loudness inside the note, and attack and release played
 				// separately on a sampled instrument, as in the player (finishNote).
@@ -295,7 +295,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 					// own detune, resampling a Sampler's voices, or the
 					// dedicated glide voice.
 					if (pitchCurve && (hasDetuneParam(synth) || sound?.bendVoices || glideVoice)) {
-						const microtuningCents = mt * 100;
+						const tuningCents = mt * 100;
 						// Anchor times are absolute beats; rebase to the note start.
 						const anchorsSec = pitchCurve.anchors.map((a) => ({
 							time: (a.time - pitchCurve.start) * secondsPerQuarterNote,
@@ -303,25 +303,25 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						}));
 
 						if (hasDetuneParam(synth)) {
-							applyPitchAnchors(synth.detune, time, anchorsSec, microtuningCents);
+							applyPitchAnchors(synth.detune, time, anchorsSec, tuningCents);
 							synth.triggerAttackRelease(noteName, noteDuration, time, velocity);
 						} else if (sound?.bendVoices) {
 							const midi = typeof note.pitch === "number"
 								? note.pitch
 								: Tone.Frequency(noteName).toMidi();
 							synth.triggerAttack(noteName, time, velocity, noteDuration);
-							const slid = sound.bendVoices(synth, midi, time, anchorsSec, microtuningCents);
+							const slid = sound.bendVoices(synth, midi, time, anchorsSec, tuningCents);
 							finish(noteName, midi);
 							if (!slid && glideVoice) {
-								applyPitchAnchors(glideVoice.detune, time, anchorsSec, microtuningCents);
+								applyPitchAnchors(glideVoice.detune, time, anchorsSec, tuningCents);
 								glideVoice.triggerAttackRelease(noteName, noteDuration, time, velocity);
 							}
 						} else {
-							applyPitchAnchors(glideVoice.detune, time, anchorsSec, microtuningCents);
+							applyPitchAnchors(glideVoice.detune, time, anchorsSec, tuningCents);
 							glideVoice.triggerAttackRelease(noteName, noteDuration, time, velocity);
 						}
 					} else {
-						// Apply microtuning by converting to frequency
+						// A tuned note is played at its frequency
 						const playNote = mt
 							? Tone.Frequency(note.pitch + mt, "midi").toFrequency()
 							: noteName;

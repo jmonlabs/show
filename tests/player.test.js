@@ -600,7 +600,7 @@ test("a held note goes through holdVoices, in seconds", async () => {
 
 test("a loudness curve goes through shapeVoices, in seconds, after holdVoices", async () => {
   const record = await playWithSound(piece(
-    [{ label: "strings", synth: 48, notes: [{ ...note(60, 0, 4), velocity: 0.5, amplitudeEnvelope: [0, 1, 0.6] }] }],
+    [{ label: "strings", synth: 48, notes: [{ ...note(60, 0, 4), velocity: 0.5, dynamics: [0, 1, 0.6] }] }],
     { tempo: 120 },
   ));
 
@@ -627,7 +627,7 @@ test("a note with no loudness curve is not shaped", async () => {
 test("a gliding note is shaped after its release is scheduled", async () => {
   const record = await playWithSound(piece([{
     label: "violin", synth: 40,
-    notes: [{ ...note(60, 0, 8), articulations: [{ type: "glissando", target: 67 }], amplitudeEnvelope: [0.5, 1] }],
+    notes: [{ ...note(60, 0, 8), articulations: [{ type: "glissando", target: 67 }], dynamics: [0.5, 1] }],
   }], { tempo: 60 }));
   assert.deepEqual(record.sound.order, ["bend", "hold", "shape"]);
   assert.ok(record.sound.shaped[0].voices > 0, "the gliding voice is still there to shape");
@@ -635,7 +635,7 @@ test("a gliding note is shaped after its release is scheduled", async () => {
 
 test("every note of a chord is shaped", async () => {
   const record = await playWithSound(piece([{
-    label: "strings", synth: 48, notes: [{ ...note(0, 0, 2), pitch: [60, 64, 67], amplitudeEnvelope: [0, 1] }],
+    label: "strings", synth: 48, notes: [{ ...note(0, 0, 2), pitch: [60, 64, 67], dynamics: [0, 1] }],
   }]));
   assert.deepEqual(record.sound.shaped.map((c) => c.midi), [60, 64, 67]);
   assert.ok(record.sound.shaped.every((c) => c.voices === 1), "each chord tone is found");

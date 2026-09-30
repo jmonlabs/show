@@ -38,7 +38,7 @@ function fakeDetune() {
 // applyPitchAnchors schedules cancel, set, ramps, and a reset to baseline
 {
   const detune = fakeDetune();
-  // Glissando 60→64 over 1s with +25 cents microtuning baseline
+  // Glissando 60→64 over 1s with +25 cents tuning baseline
   applyPitchAnchors(detune, 10, [
     { time: 0, value: 0 },
     { time: 1, value: 400 },
