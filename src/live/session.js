@@ -42,8 +42,6 @@ export class Session {
      * @param {boolean} resetPosition - Whether to reset position (default: true)
      */
     setPattern(newPattern, resetPosition = true) {
-        console.log('Setting new JMON pattern:', newPattern);
-
         // Validate JMON format
         if (!newPattern) {
             console.warn('No pattern provided');
@@ -98,8 +96,6 @@ export class Session {
 
         // Notify UI
         this.updateUI();
-
-        console.log(`Pattern loaded: ${this.flattenedNotes.length} notes, ${this.loopDuration} quarter notes duration`);
     }
 
     /**

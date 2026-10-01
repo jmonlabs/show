@@ -199,10 +199,8 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 		});
 
 		// Phase 2: Wait for all samplers to finish loading
-		console.log(`[WAV] Waiting for ${samplers.length} sampler(s) to load...`);
 		await Promise.all(samplers.map(s => s.loaded));
 		await Tone.loaded();
-		console.log('[WAV] Samples loaded, scheduling notes');
 
 		// Phase 3: Schedule notes and modulation effects
 		tracks.forEach((track, trackIndex) => {
