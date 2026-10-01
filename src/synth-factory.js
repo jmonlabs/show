@@ -186,7 +186,7 @@ export function createTrackSynth(track, ToneLib, sharedSynth = null, presets = n
  */
 function wantsSamples(spec) {
   if (typeof spec === "number") return true;
-  if (typeof spec === "string") return /^(drum)?kit:/i.test(spec);
+  if (typeof spec === "string") return spec === "drumkit" || /^(drum)?kit:/i.test(spec);
   return !!(spec && typeof spec === "object"
     && (typeof spec.gm === "number" || typeof spec.program === "number"
         || typeof spec.kit === "string" || typeof spec.drumkit === "string"));
