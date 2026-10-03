@@ -38,11 +38,14 @@ export function wav(piece, options = {}) {
  * @param {Object} Tone - The Tone.js library (import from npm:tone)
  * @param {string} filename - Output filename (default: "piece.wav")
  * @param {number} duration - Duration in seconds (default: auto-calculated from piece)
- * @returns {Promise<void>}
+ * @param {Object} [options] - `{ sound, io, player }`; with `player: true`,
+ *   an audio player over the rendered file instead of a bare download link
+ * @returns {Promise<HTMLElement>} A download link, or a player with the link
  *
  * @example
  * import * as Tone from "npm:tone@14.7.77";
  * await jm.wav(piece, { filename: "my-song.wav" });
+ * await jm.wav(piece, { player: true }); // listen, rendered offline
  */
 export async function downloadWav(piece, Tone, filename = "piece.wav", duration, options = {}) {
 	normalizeAudioGraph(piece);
@@ -346,7 +349,19 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 	a.href = url;
 	a.download = filename;
 	a.textContent = `Download ${filename}`;
-	return a;
+	if (!options.player) return a;
+
+	// With `player: true`, an audio player over the rendered file, and the
+	// link beneath it. Rendered offline, the piece plays exactly as written
+	// whatever the machine: a slow processor only makes the render take longer,
+	// where live playback would crackle or skip.
+	const box = document.createElement("div");
+	const audio = document.createElement("audio");
+	audio.controls = true;
+	audio.src = url;
+	audio.style.width = "100%";
+	box.append(audio, a);
+	return box;
 }
 
 /**
