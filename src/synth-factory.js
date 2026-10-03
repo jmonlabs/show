@@ -182,13 +182,13 @@ export function createTrackSynth(track, ToneLib, sharedSynth = null, presets = n
  *
  * Deliberately loose: the provider decides what it recognises. This only has
  * to spot the shapes Tone cannot build on its own — a bare program number, a
- * `{ gm }` object, and a `kit:` reference.
+ * `{ gm }` object, the drums (`"drums"`, `{ drums }`), and a `kit:` reference.
  */
 function wantsSamples(spec) {
   if (typeof spec === "number") return true;
-  if (typeof spec === "string") return spec === "drumkit" || /^(drum)?kit:/i.test(spec);
+  if (typeof spec === "string") return spec === "drums" || spec === "drumkit" || /^(drum)?kit:/i.test(spec);
   return !!(spec && typeof spec === "object"
-    && (typeof spec.gm === "number" || typeof spec.program === "number"
+    && (typeof spec.gm === "number" || typeof spec.program === "number" || typeof spec.drums === "number"
         || typeof spec.kit === "string" || typeof spec.drumkit === "string"));
 }
 
