@@ -38,7 +38,7 @@ import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
 import { Session } from "./live/session.js";
 import { createWebMidiSink, playSessionTo, noteToBytes, ccToBytes, ccStepsFor } from "./live/sink.js";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.0.1";
 
 export { createPlayer, downloadWav, scoreSVG, tonejs, requireFormat };
 
