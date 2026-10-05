@@ -62,6 +62,7 @@ written. One warning, not one per track.
 | `src/live/` | the live-coding iframe player. Schedules in transport ticks and swaps patterns at a loop or bar boundary. Unlike the rest, it fetches Tone, io and sound by URL itself, because it is an application rather than a library. |
 | `live/` | the REPL page that hosts `src/live/`'s player in an iframe: an editor, a `send()`/`postMessage` bridge, Web MIDI output. Deployed at [jmonlabs.github.io/live/repl.html](https://jmonlabs.github.io/live/repl.html), not from this repo's own Pages. |
 | `show.master` | mastering chains: `dark`, `light`, `warm`, `cinematic`, `intimate`, `broadcast`, `vinyl`, `lush`. |
+| `audioGraph` `Channel` | a bus. With `channelCount: 2` and a `pan`, it keeps a stereo signal stereo: the pan works as a balance, turning the far side down, where Tone's own Channel folds one side into the other and narrows the sound towards mono (`src/audio/channel.js`). |
 
 ## The other packages
 

@@ -19,6 +19,7 @@ import {
 } from "./synth-factory.js";
 import { requireFormat } from "./format.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
+import { createGraphNode } from "./audio/channel.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 
 export function wav(piece, options = {}) {
@@ -392,9 +393,9 @@ async function buildAudioGraphInstruments(piece, Tone) {
 					instrument = new Tone.PolySynth();
 				}
 			} else if (ALL_EFFECTS.includes(type)) {
-				// Create effect
+				// Create effect (a panned stereo Channel keeps its width: see channel.js)
 				try {
-					instrument = new Tone[type](options);
+					instrument = createGraphNode(Tone, type, options);
 				} catch (e) {
 					console.warn(`Failed to create ${type} effect:`, e);
 					instrument = null;

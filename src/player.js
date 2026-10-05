@@ -1,6 +1,7 @@
 import { tonejs } from "./tonejs.js";
 import { requireFormat } from "./format.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
+import { createGraphNode } from "./audio/channel.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 import {
   amplitudeAnchors,
@@ -276,7 +277,8 @@ export function createPlayer(piece, options = {}) {
         if (type === 'Destination') { graphNodes[id] = ToneLib.Destination; return; }
         try {
           if (SYNTHESIZER_TYPES.includes(type) || ALL_EFFECTS.includes(type)) {
-            graphNodes[id] = new ToneLib[type](opts);
+            // a panned stereo Channel keeps its width: see channel.js
+            graphNodes[id] = createGraphNode(ToneLib, type, opts);
             activeSynths.push(graphNodes[id]);
           }
         } catch (e) {
