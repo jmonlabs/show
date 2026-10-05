@@ -139,7 +139,8 @@ export function createTrackSynth(track, ToneLib, sharedSynth = null, presets = n
 
   const synthSpec = resolveSynthPreset(track && track.synth, presets);
 
-  const sampled = sound?.create?.(synthSpec, ToneLib);
+  // The notes go along, so a large sampled instrument loads only the recordings this track plays.
+  const sampled = sound?.create?.(synthSpec, ToneLib, { notes: track?.notes });
   if (sampled?.node) {
     return { synth: sampled.node, isLoadable: sampled.isLoadable !== false, isShared: false };
   }
