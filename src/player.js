@@ -2,6 +2,7 @@ import { tonejs } from "./tonejs.js";
 import { requireFormat } from "./format.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
 import { createGraphNode } from "./audio/channel.js";
+import { modulationOff, modulationOn, prepareModulation } from "./audio/modulation.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 import {
   amplitudeAnchors,
@@ -366,14 +367,14 @@ export function createPlayer(piece, options = {}) {
         if (vibratoMods.length > 0) {
           const dv = vibratoMods[0];
           vibratoEffect = new ToneLib.Vibrato({ frequency: dv.rate || 5, depth: (dv.depth || 50) / 100 });
-          vibratoEffect.wet.value = 0;
+          prepareModulation(vibratoEffect);
           activeSynths.push(vibratoEffect);
         }
 
         if (tremoloMods.length > 0) {
           const dt = tremoloMods[0];
           tremoloEffect = new ToneLib.Tremolo({ frequency: dt.rate || 8, depth: dt.depth || 0.3 }).start();
-          tremoloEffect.wet.value = 0;
+          prepareModulation(tremoloEffect);
           activeSynths.push(tremoloEffect);
         }
 
@@ -575,25 +576,14 @@ export function createPlayer(piece, options = {}) {
         const endTime = toSeconds(mod.end);
 
         if (mod.type === "pitch" && mod.subtype === "vibrato" && vibratoEffect) {
-          scheduledEvents.push(ToneLib.Transport.schedule(() => {
-            vibratoEffect.frequency.value = mod.rate || 5;
-            vibratoEffect.depth.value = (mod.depth || 50) / 100;
-            vibratoEffect.wet.value = 1;
-          }, startTime));
-          scheduledEvents.push(ToneLib.Transport.schedule(() => {
-            vibratoEffect.wet.value = 0;
-          }, endTime));
+          // the depth eases in and out rather than the effect switching on: see modulation.js
+          scheduledEvents.push(ToneLib.Transport.schedule((t) => modulationOn(vibratoEffect, t, { frequency: mod.rate || 5, depth: (mod.depth || 50) / 100 }), startTime));
+          scheduledEvents.push(ToneLib.Transport.schedule((t) => modulationOff(vibratoEffect, t), endTime));
         }
 
         if (mod.type === "amplitude" && mod.subtype === "tremolo" && tremoloEffect) {
-          scheduledEvents.push(ToneLib.Transport.schedule(() => {
-            tremoloEffect.frequency.value = mod.rate || 8;
-            tremoloEffect.depth.value = mod.depth || 0.3;
-            tremoloEffect.wet.value = 1;
-          }, startTime));
-          scheduledEvents.push(ToneLib.Transport.schedule(() => {
-            tremoloEffect.wet.value = 0;
-          }, endTime));
+          scheduledEvents.push(ToneLib.Transport.schedule((t) => modulationOn(tremoloEffect, t, { frequency: mod.rate || 8, depth: mod.depth || 0.3 }), startTime));
+          scheduledEvents.push(ToneLib.Transport.schedule((t) => modulationOff(tremoloEffect, t), endTime));
         }
       });
 

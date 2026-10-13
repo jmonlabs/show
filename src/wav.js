@@ -20,6 +20,7 @@ import {
 import { requireFormat } from "./format.js";
 import { SYNTHESIZER_TYPES, ALL_EFFECTS } from "./audio/effects.js";
 import { createGraphNode } from "./audio/channel.js";
+import { modulationOff, modulationOn, prepareModulation } from "./audio/modulation.js";
 import { normalizeAudioGraph } from "./audio/normalize.js";
 
 export function wav(piece, options = {}) {
@@ -150,7 +151,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						frequency: defaultVibrato.rate || 5,
 						depth: (defaultVibrato.depth || 50) / 100,
 					});
-					vibratoEffect.wet.value = 0;
+					prepareModulation(vibratoEffect);
 				}
 
 				if (tremoloMods.length > 0) {
@@ -159,7 +160,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						frequency: defaultTremolo.rate || 8,
 						depth: defaultTremolo.depth || 0.3,
 					}).start();
-					tremoloEffect.wet.value = 0;
+					prepareModulation(tremoloEffect);
 				}
 
 				const tail = (node) => {
@@ -218,21 +219,14 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 				const endTime = mod.end * secondsPerQuarterNote;
 
 				if (mod.type === "pitch" && mod.subtype === "vibrato" && vibratoEffect) {
-					transport.schedule(() => {
-						vibratoEffect.frequency.value = mod.rate || 5;
-						vibratoEffect.depth.value = (mod.depth || 50) / 100;
-						vibratoEffect.wet.value = 1;
-					}, startTime);
-					transport.schedule(() => { vibratoEffect.wet.value = 0; }, endTime);
+					// the depth eases in and out rather than the effect switching on: see modulation.js
+					transport.schedule((t) => modulationOn(vibratoEffect, t, { frequency: mod.rate || 5, depth: (mod.depth || 50) / 100 }), startTime);
+					transport.schedule((t) => modulationOff(vibratoEffect, t), endTime);
 				}
 
 				if (mod.type === "amplitude" && mod.subtype === "tremolo" && tremoloEffect) {
-					transport.schedule(() => {
-						tremoloEffect.frequency.value = mod.rate || 8;
-						tremoloEffect.depth.value = mod.depth || 0.3;
-						tremoloEffect.wet.value = 1;
-					}, startTime);
-					transport.schedule(() => { tremoloEffect.wet.value = 0; }, endTime);
+					transport.schedule((t) => modulationOn(tremoloEffect, t, { frequency: mod.rate || 8, depth: mod.depth || 0.3 }), startTime);
+					transport.schedule((t) => modulationOff(tremoloEffect, t), endTime);
 				}
 			});
 
