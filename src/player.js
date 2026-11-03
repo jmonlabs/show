@@ -83,7 +83,10 @@ export function createPlayer(piece, options = {}) {
   // Convert JMON to Tone.js format
   const convertedData = tonejs(piece, {});
   const { tracks: convertedTracks, metadata } = convertedData;
-  const totalDuration = metadata.totalDuration;
+  // The converter counts beats at one tempo; a tempoMap stretches or shrinks
+  // them, so the length is integrated through the map like every event.
+  const totalBeats = (metadata.totalDuration * metadata.tempo) / 60;
+  const totalDuration = fmt.beatsToSeconds(totalBeats, fmt.tempoSegments(piece));
 
   // Keep reference to original tracks for compiling articulations
   const originalTracksSource = tracks;
@@ -259,7 +262,7 @@ export function createPlayer(piece, options = {}) {
     window.Tone = ToneLib;
 
     await ToneLib.start();
-    ToneLib.Transport.bpm.value = tempo;
+    ToneLib.Transport.bpm.value = tempo; // never changed while playing: a tempoMap is already in the events' seconds
 
     // Dispose previous audio objects
     disposeAudio();
@@ -441,28 +444,6 @@ export function createPlayer(piece, options = {}) {
 
   // ── Schedule events on the transport (cheap — redo on seek) ──────
   /**
-   * Follow the piece's tempoMap.
-   *
-   * Event times are already integrated through the map, so this exists so that
-   * Tone's own musical-time parsing (note-value durations, ramp times) and any
-   * transport-position readout agree with what is being heard.
-   */
-  function scheduleTempoChanges(toSeconds) {
-    const segments = tempoPlan?.segments;
-    if (!segments || segments.length <= 1) return;
-
-    for (const segment of segments) {
-      if (segment.time === 0) {
-        ToneLib.Transport.bpm.value = segment.tempo;
-        continue;
-      }
-      scheduledEvents.push(ToneLib.Transport.schedule(() => {
-        ToneLib.Transport.bpm.value = segment.tempo;
-      }, toSeconds(segment.time)));
-    }
-  }
-
-  /**
    * Follow the piece's timeSignatureMap.
    *
    * Note placement is unaffected — JMON times are quarter notes, which do not
@@ -563,7 +544,6 @@ export function createPlayer(piece, options = {}) {
       ? tempoPlan.toSeconds
       : (beats) => beats * 60 / tempo;
 
-    scheduleTempoChanges(toSeconds);
     scheduleTimeSignatureChanges(toSeconds);
     scheduleAutomation(toSeconds);
 

@@ -202,6 +202,21 @@ test("a tempoMap moves the notes that follow it", async () => {
   assert.ok(!scheduled.includes(3), "the flat-rate position should not appear");
 });
 
+test("a tempoMap never changes the transport's bpm while playing", async () => {
+  // The events are already placed in seconds through the map. Tone turns a
+  // time in seconds into ticks at the bpm of the moment it is scheduled, so a
+  // bpm that also drops would slow everything after it a second time.
+  const { record, Tone } = await playAndRecord(piece(
+    [{ label: "lead", notes: [note(60, 0), note(62, 2), note(64, 4), note(65, 6)] }],
+    { tempoMap: [{ time: 0, tempo: 120 }, { time: 4, tempo: 60 }] },
+  ));
+  const before = Tone.Transport.bpm.value;
+  for (const { callback, time } of record.scheduled) {
+    try { callback(time); } catch (_) { /* a note callback may need more of Tone than the fake has */ }
+  }
+  assert.equal(Tone.Transport.bpm.value, before);
+});
+
 test("without a tempoMap the schedule is unchanged", async () => {
   const notes = [note(60, 0), note(62, 1), note(64, 2), note(65, 3)];
   const flat = await playAndRecord(piece([{ label: "lead", notes }]));
