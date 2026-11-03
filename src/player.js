@@ -65,6 +65,10 @@ export function createPlayer(piece, options = {}) {
 
   const { Tone: externalTone = null, autoplay = false, sound = null, io = null } = options;
 
+  // An instrument said in JSON (an ison) may say how it is played: its
+  // tracks' notes are performed first, so what is scheduled is what sounds.
+  if (typeof sound?.performPiece === "function") piece = sound.performPiece(piece);
+
   // Reading the piece is jmon/io's job; this package receives it.
   const fmt = requireFormat(io);
 
@@ -622,6 +626,9 @@ export function createPlayer(piece, options = {}) {
         const sampled = !!(sound?.handlesVoices ?? sound?.canResample)?.(synth);
         const finish = (name, midi, t) =>
           finishNote(synth, sound, { name, midi, time: t, seconds: duration, velocity, loopSustain, loudness });
+        // Which variant of the instrument the note asks for, if it names one: a
+        // SoundFont's `variants` are other presets of the bank, a channel each.
+        const playing = { variant: note.variant };
 
         // Handle chords
         if (Array.isArray(note.pitch)) {
@@ -637,7 +644,7 @@ export function createPlayer(piece, options = {}) {
               return;
             }
             chordNotes.forEach((name, k) => {
-              synth.triggerAttack(name, t, velocity, duration);
+              synth.triggerAttack(name, t, velocity, duration, playing);
               if (typeof note.pitch[k] === "number") finish(name, Math.round(note.pitch[k] + mt), t);
               else synth.triggerRelease(name, t + duration);
             });
@@ -679,7 +686,7 @@ export function createPlayer(piece, options = {}) {
               : ToneLib.Frequency(noteName).toMidi();
 
             scheduledEvents.push(ToneLib.Transport.schedule((t) => {
-              synth.triggerAttack(noteName, t, velocity, duration);
+              synth.triggerAttack(noteName, t, velocity, duration, playing);
               const slid = sound.bendVoices(synth, midi, t, anchorsSec, tuningCents);
               finish(noteName, midi, t);
               // If Tone moved `_activeSources` the note still sounds, just
@@ -704,7 +711,7 @@ export function createPlayer(piece, options = {}) {
 
           scheduledEvents.push(ToneLib.Transport.schedule((t) => {
             if (sampled && typeof note.pitch === "number") {
-              synth.triggerAttack(playNote, t, velocity, duration);
+              synth.triggerAttack(playNote, t, velocity, duration, playing);
               finish(playNote, Math.round(note.pitch + tuning), t);
             } else {
               synth.triggerAttackRelease(playNote, duration, t, velocity);

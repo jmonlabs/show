@@ -54,6 +54,7 @@ export class Tonejs {
                 duration: note.duration,
                 velocity: note.velocity || 0.8,
                 tuning: note.tuning ?? note.microtuning, // the note's tuning, in semitones
+                variant: note.variant, // which way of playing, for an instrument that has several
             }))
         }));
     }

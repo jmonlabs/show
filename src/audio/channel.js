@@ -10,9 +10,12 @@
  *
  * When a Channel says `channelCount: 2` and has a pan, the pan becomes a
  * balance instead: the far side is turned down (by `pan`, linearly), and
- * nothing is folded across. Pan 0, or a Channel without `channelCount: 2`,
- * is Tone's own Channel, unchanged. The balance is set once: the Channel's
- * `pan` signal stays at 0 and moving it later does nothing.
+ * nothing is folded across. A mono input (a Tone synth, an FM voice) is first
+ * made stereo, the same signal on both sides: split as it is, it would all go
+ * to the left, and a voice panned right came out of the left side only. Pan
+ * 0, or a Channel without `channelCount: 2`, is Tone's own Channel, unchanged.
+ * The balance is set once: the Channel's `pan` signal stays at 0 and moving it
+ * later does nothing.
  */
 
 /**
@@ -29,10 +32,17 @@ export function createChannel(ToneLib, options = {}) {
   const merge = new ToneLib.Merge(2);
   const left = new ToneLib.Gain(pan > 0 ? 1 - pan : 1);
   const right = new ToneLib.Gain(pan < 0 ? 1 + pan : 1);
+  // Two channels in, mixed up as speakers: a mono input reaches both sides.
+  // A channel splitter takes its input as discrete channels, so it cannot.
+  const upmix = new ToneLib.Gain(1);
+  upmix.channelCount = 2;
+  upmix.channelCountMode = "explicit";
+  upmix.channelInterpretation = "speakers";
 
   // Between the Channel's solo stage and its pan and volume stage.
   channel._solo.disconnect(channel._panVol);
-  channel._solo.connect(split);
+  channel._solo.connect(upmix);
+  upmix.connect(split);
   split.connect(left, 0, 0);
   split.connect(right, 1, 0);
   left.connect(merge, 0, 0);
@@ -41,7 +51,7 @@ export function createChannel(ToneLib, options = {}) {
 
   const dispose = channel.dispose.bind(channel);
   channel.dispose = () => {
-    for (const node of [split, merge, left, right]) node.dispose();
+    for (const node of [upmix, split, merge, left, right]) node.dispose();
     return dispose();
   };
   return channel;

@@ -50,8 +50,11 @@ export function wav(piece, options = {}) {
  * await jm.wav(piece, { player: true }); // listen, rendered offline
  */
 export async function downloadWav(piece, Tone, filename = "piece.wav", duration, options = {}) {
-	normalizeAudioGraph(piece);
 	const sound = options.sound || null;
+	// An instrument said in JSON (an ison) may say how it is played: its
+	// tracks' notes are performed first, as in the player.
+	if (typeof sound?.performPiece === "function") piece = sound.performPiece(piece);
+	normalizeAudioGraph(piece);
 	const fmt = requireFormat(options.io);
 
 	// Let the provider settle its sample source before entering the offline
@@ -75,8 +78,11 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 
 	// Convert quarter notes to seconds
 	const tempo = piece.tempo || 120;
-	const secondsPerQuarterNote = 60 / tempo;
-	const calculatedDuration = maxTime * secondsPerQuarterNote + 1; // +1 second buffer
+	// A tempo map means each beat sits at its own rate, as in the player: the
+	// map is integrated. With no tempoMap this is `beats * 60 / tempo`.
+	const segments = fmt.tempoSegments(piece);
+	const toSeconds = (beats) => fmt.beatsToSeconds(beats, segments);
+	const calculatedDuration = toSeconds(maxTime) + 1; // +1 second buffer
 
 	const finalDuration = duration || calculatedDuration;
 
@@ -215,8 +221,8 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 
 			// Schedule effect enable/disable
 			trackModulations.forEach((mod) => {
-				const startTime = mod.start * secondsPerQuarterNote;
-				const endTime = mod.end * secondsPerQuarterNote;
+				const startTime = toSeconds(mod.start);
+				const endTime = toSeconds(mod.end);
 
 				if (mod.type === "pitch" && mod.subtype === "vibrato" && vibratoEffect) {
 					// the depth eases in and out rather than the effect switching on: see modulation.js
@@ -233,7 +239,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 			// Controller moves, before the notes: one at a note's instant is
 			// already set when the note starts.
 			for (const move of fmt.controllerEvents?.(track, piece, trackIndex) ?? []) {
-				sendControllerMove(synth, move, move.time * secondsPerQuarterNote);
+				sendControllerMove(synth, move, toSeconds(move.time));
 			}
 
 			// Build glissando lookup
@@ -245,8 +251,10 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 
 			// Schedule notes
 			notes.forEach((note, noteIndex) => {
-				const time = (note.time || 0) * secondsPerQuarterNote;
-				const noteDuration = (note.duration || 1) * secondsPerQuarterNote;
+				const time = toSeconds(note.time || 0);
+				const noteDuration = toSeconds((note.time || 0) + (note.duration || 1)) - time;
+				// Inside the note, the tempo where it is: a note's own curves are short.
+				const secondsPerBeatHere = noteDuration / (note.duration || 1);
 				const noteMods = modsByNote[noteIndex] || [];
 
 				// Unified pitch curve: glissando, portamento, bend, and pitch
@@ -259,11 +267,14 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 
 				// The loudness inside the note, and attack and release played
 				// separately on a sampled instrument, as in the player (finishNote).
-				const loudness = amplitudeAnchors(noteMods, secondsPerQuarterNote);
+				const loudness = amplitudeAnchors(noteMods, secondsPerBeatHere);
 				const sampled = !!(sound?.handlesVoices ?? sound?.canResample)?.(synth);
 				const velocity = note.velocity || 0.8;
 				const finish = (name, midi) =>
 					finishNote(synth, sound, { name, midi, time, seconds: noteDuration, velocity, loopSustain, loudness });
+				// Which variant of the instrument the note asks for, if it names one: a
+				// SoundFont's `variants` are other presets of the bank, a channel each.
+				const playing = { variant: note.variant };
 
 				if (Array.isArray(note.pitch)) {
 					const chordNotes = note.pitch.map((p) =>
@@ -275,7 +286,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						synth.triggerAttackRelease(chordNotes, noteDuration, time, velocity);
 					} else {
 						chordNotes.forEach((name, k) => {
-							synth.triggerAttack(name, time, velocity, noteDuration);
+							synth.triggerAttack(name, time, velocity, noteDuration, playing);
 							if (typeof note.pitch[k] === "number") finish(name, Math.round(note.pitch[k] + mt));
 							else synth.triggerRelease(name, time + noteDuration);
 						});
@@ -294,7 +305,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 						const tuningCents = mt * 100;
 						// Anchor times are absolute beats; rebase to the note start.
 						const anchorsSec = pitchCurve.anchors.map((a) => ({
-							time: (a.time - pitchCurve.start) * secondsPerQuarterNote,
+							time: (a.time - pitchCurve.start) * secondsPerBeatHere,
 							value: a.value,
 						}));
 
@@ -305,7 +316,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							const midi = typeof note.pitch === "number"
 								? note.pitch
 								: Tone.Frequency(noteName).toMidi();
-							synth.triggerAttack(noteName, time, velocity, noteDuration);
+							synth.triggerAttack(noteName, time, velocity, noteDuration, playing);
 							const slid = sound.bendVoices(synth, midi, time, anchorsSec, tuningCents);
 							finish(noteName, midi);
 							if (!slid && glideVoice) {
@@ -322,7 +333,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 							? Tone.Frequency(note.pitch + mt, "midi").toFrequency()
 							: noteName;
 						if (sampled && typeof note.pitch === "number") {
-							synth.triggerAttack(playNote, time, velocity, noteDuration);
+							synth.triggerAttack(playNote, time, velocity, noteDuration, playing);
 							finish(playNote, Math.round(note.pitch + mt));
 						} else {
 							synth.triggerAttackRelease(playNote, noteDuration, time, velocity);

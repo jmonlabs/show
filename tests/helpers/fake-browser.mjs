@@ -184,13 +184,15 @@ export function createFakeTone() {
       this.sampleShape = options?.sampleShape || "sustaining";
       this.sampleSeconds = options?.sampleSeconds ?? SAMPLE_SECONDS;
     }
-    triggerAttack(notes, time, velocity) {
+    // The fifth argument is what the player says about the note's way of
+    // playing (its variant); a Sampler ignores it, the recording keeps it.
+    triggerAttack(notes, time, velocity, _duration, playing) {
       for (const note of [].concat(notes)) {
         const midi = Math.round(noteNameToMidi(note));
         const source = makeBufferSource(record, this.sampleShape, this.sampleSeconds);
         if (!this._activeSources.has(midi)) this._activeSources.set(midi, []);
         this._activeSources.get(midi).push(source);
-        record.triggered.push({ pitch: note, time, velocity });
+        record.triggered.push({ pitch: note, time, velocity, ...(playing ? { playing } : {}) });
       }
       return this;
     }
@@ -369,6 +371,20 @@ export function createRecordingSound(record, Tone) {
   };
 
   return {
+    // Like jmon/sound's: a track whose synth is an ison with `play` rules has
+    // its notes performed first. Here, every such note is split in two.
+    performPiece(piece) {
+      record.sound.performed = (record.sound.performed || 0) + 1;
+      const tracks = (piece.tracks || []).map((track) => {
+        if (track?.synth?.format !== "ison" || !track.synth.play) return track;
+        const notes = (track.notes || []).flatMap((n) => [
+          { ...n, duration: n.duration / 2 },
+          { ...n, time: n.time + n.duration / 2, duration: n.duration / 2 },
+        ]);
+        return { ...track, notes };
+      });
+      return { ...piece, tracks };
+    },
     create(spec, ToneLib) {
       if (gmProgram(spec) === null) return null;
       record.sound.created.push(spec);

@@ -531,6 +531,24 @@ test("a General MIDI program is handed to the provider, not built here", async (
   assert.ok(record.nodes.some((n) => n.type === "Sampler"), "and its node is used");
 });
 
+test("a note's variant reaches the sampled instrument, live as in the render", async () => {
+  // The live player converts notes to part events first; a field left out of
+  // that conversion never reaches the instrument, whatever the render does.
+  const record = await playWithSound(piece([
+    { label: "violin", synth: 40, notes: [{ ...note(69, 0, 2), variant: "vibrato" }, note(71, 2)] },
+  ]));
+  assert.deepEqual(record.triggered.map((t) => t.playing), [{ variant: "vibrato" }, { variant: undefined }]);
+});
+
+test("an ison's play rules are applied before anything is scheduled", async () => {
+  const ison = { format: "ison", version: "1.0", name: "v", sources: { s: { gm: 40 } }, play: { bow: { max: 2 } } };
+  const record = await playWithSound(piece([
+    { label: "violin", synth: ison, notes: [note(69, 0, 4)] },
+  ]));
+  assert.equal(record.sound.performed, 1);
+  assert.deepEqual(times(record).filter((t) => t < 2), [0, 1], "two strokes of a beat each, at 120 BPM");
+});
+
 test("the sampling options travel with the spec", async () => {
   // The player must not interpret `strategy` — how densely to sample is the
   // provider's decision, so the spec goes through whole.
