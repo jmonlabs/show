@@ -29,6 +29,7 @@ export const MODULATION_EFFECTS = [
 // Distortion and dynamics
 export const DISTORTION_EFFECTS = [
   "Distortion",
+  "Saturation",
   "Chebyshev",
   "BitCrusher"
 ];

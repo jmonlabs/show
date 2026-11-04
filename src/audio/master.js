@@ -51,10 +51,9 @@ function buildChain(p, intensity = 1) {
     });
   }
   if (p.saturation) {
-    push("master_saturate", "Distortion", {
-      distortion: p.saturation.drive,
+    push("master_saturate", "Saturation", {
+      drive: p.saturation.drive,
       wet: p.saturation.wet * intensity,
-      oversample: "2x",
     });
   }
   if (p.bitcrusher) {

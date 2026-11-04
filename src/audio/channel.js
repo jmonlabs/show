@@ -66,5 +66,31 @@ export function createChannel(ToneLib, options = {}) {
  * @param {Object} [options]
  */
 export function createGraphNode(ToneLib, type, options = {}) {
-  return type === "Channel" ? createChannel(ToneLib, options) : new ToneLib[type](options);
+  if (type === "Channel") return createChannel(ToneLib, options);
+  if (type === "Saturation") return createSaturation(ToneLib, options);
+  return new ToneLib[type](options);
+}
+
+/**
+ * The curve of a gentle saturation, for a sample between -1 and 1.
+ *
+ * A straight line at ordinary levels, which bends only towards the top:
+ * `tanh(g·x) / g`, whose slope at 0 is 1, mixed with the dry sample by `wet`.
+ * `drive` (0 to 1) sets how early it bends (g = 1 + 4·drive). Unlike
+ * Tone.Distortion, which multiplies a quiet signal several times before it
+ * clips and so colours everything, this leaves a quiet passage untouched.
+ *
+ * @param {number} x - a sample, -1 to 1
+ * @param {{drive?: number, wet?: number}} [options]
+ */
+export function saturationCurve(x, { drive = 0.3, wet = 1 } = {}) {
+  const g = 1 + 4 * drive;
+  return (1 - wet) * x + wet * (Math.tanh(g * x) / g);
+}
+
+/** A Saturation node: one WaveShaper on saturationCurve, oversampled. */
+function createSaturation(ToneLib, { drive = 0.3, wet = 1, oversample = "2x" } = {}) {
+  const shaper = new ToneLib.WaveShaper((x) => saturationCurve(x, { drive, wet }), 4096);
+  shaper.oversample = oversample;
+  return shaper;
 }
