@@ -344,7 +344,7 @@ export async function downloadWav(piece, Tone, filename = "piece.wav", duration,
 		});
 
 		transport.start(0);
-	}, finalDuration);
+	}, finalDuration, 2, options.sampleRate); // `sampleRate`: a lower one (22050, 11025) renders faster, for a check rather than a listen
 
 	// Convert AudioBuffer to WAV blob
 	const wavBlob = await audioBufferToWav(buffer);
