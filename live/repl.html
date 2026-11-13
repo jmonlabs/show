@@ -61,6 +61,7 @@
       align-items: center;
       gap: 10px;
     }
+    .beat { font-size: 16px; min-width: 150px; color: var(--accent); white-space: pre; }
     .header h2 {
       font-size: 14px;
       color: var(--accent);
@@ -166,10 +167,27 @@
     <button id="load-demo" title="Load drums + drone + violin walk demo">Load demo</button>
     <span class="status" id="status">waiting</span>
   </div>
+  <div class="header">
+    <label>keys play <select id="keys" title="The track the keys play"></select></label>
+    <label>pads play <select id="pads" title="The track the pads play (MIDI channel 10)"></select></label>
+    <button id="rec" title="With nothing playing: start, then stop to set the loop. Over a loop: add a layer">Rec</button>
+    <button id="undo" title="Take away the last layer">Undo</button>
+    <label>grid
+      <select id="grid" title="Snap the recorded notes">
+        <option value="0" selected>off</option>
+        <option value="0.5">1/8</option>
+        <option value="0.25">1/16</option>
+      </select>
+    </label>
+    <button id="pedal" title="Press, then hit a pad: that pad starts and stops recording">Pedal: none</button>
+    <span class="beat" id="beat" title="The beat in the bar, and the bar in the loop">····</span>
+    <label title="Hear the beat"><input type="checkbox" id="click"> click</label>
+    <span class="status" id="midi-in" title="The last MIDI message heard">no MIDI in</span>
+  </div>
   <div class="body">
     <div id="code-host"></div>
     <div class="player-pane">
-      <iframe id="player" src="index.html" allow="midi"></iframe>
+      <iframe id="player" allow="midi"></iframe>
       <div class="hint">
         Click the player once to enable audio.<br>
         For MIDI to a DAW, enable a virtual MIDI port (IAC on macOS,
@@ -199,6 +217,16 @@
     const statusEl = document.getElementById("status");
     const modeEl = document.getElementById("mode");
     const midiOutEl = document.getElementById("midi-out");
+    const keysEl = document.getElementById("keys");
+    const recEl = document.getElementById("rec");
+    const gridEl = document.getElementById("grid");
+    const padsEl = document.getElementById("pads");
+    const pedalEl = document.getElementById("pedal");
+    const midiInEl = document.getElementById("midi-in");
+    const beatEl = document.getElementById("beat");
+    const clickEl = document.getElementById("click");
+    // `?local` goes on to the player: it then plays show, io and sound from this disk.
+    playerEl.src = "index.html" + location.search;
     const codeHost = document.getElementById("code-host");
 
     let playerReady = false;
@@ -263,6 +291,11 @@
       state: EditorState.create({
         doc: "",
         extensions: [
+          // The editor is kept in this browser as you type: a reload, or a
+          // swipe back on the trackpad, gives it back.
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) localStorage.setItem("jmon-live-repl", update.state.doc.toString());
+          }),
           lineNumbers(),
           highlightActiveLine(),
           history(),
@@ -288,7 +321,32 @@
       });
     }
 
+    // The keyboard takes, written at the top of the editor between two marker
+    // lines, so the code below can use them (`notes: recorded.cello.notes`).
+    let recording = false;
+    const layers = []; // what `recorded` was before each take, for Undo
+    const takesStart = "// Keyboard takes (rewritten after each take).";
+    const takesEnd = "// End of keyboard takes.";
+    function writeTakes() {
+      const line = (o) => JSON.stringify(o).replace(/"(\w+)":/g, "$1: ").replace(/,(?=\S)/g, ", ").replace(/^\{/, "{ ").replace(/\}$/, " }");
+      const tracks = Object.entries(scope.recorded).map(([label, t]) =>
+        `  ${JSON.stringify(label)}: {\n${t.loop ? `    loop: ${t.loop},\n` : ""}    notes: [\n${t.notes.map((n) => "      " + line(n) + ",\n").join("")}    ],\n` +
+        `    cc: [\n${(t.cc || []).map((c) => "      " + line(c) + ",\n").join("")}    ],\n  },\n`).join("");
+      const block = `${takesStart}\nrecorded = {\n${tracks}};\n${takesEnd}\n`;
+      const code = getCode();
+      const from = code.indexOf(takesStart);
+      const to = code.indexOf(takesEnd);
+      if (from >= 0 && to > from) {
+        view.dispatch({ changes: { from, to: Math.min(code.length, to + takesEnd.length + 1), insert: block } });
+      } else {
+        view.dispatch({ changes: { from: 0, to: 0, insert: block + "\n" } });
+      }
+    }
+
     const AsyncFunction = (async function () {}).constructor;
+
+    // Leaving the page stops the music: ask first once something is playing.
+    window.addEventListener("beforeunload", (event) => { if (playerReady && scope.pattern) event.preventDefault(); });
 
     async function run() {
       const code = getCode();
@@ -296,6 +354,7 @@
       // lands on scope (rather than creating a global). AsyncFunction bodies
       // are sloppy mode, so `with` is allowed and user code can `await`.
       scope.pattern = undefined;
+      scope.recorded ??= {}; // the keyboard takes, so a bare `recorded = {...}` lands here too
       try {
         const fn = new AsyncFunction("scope", "with (scope) {\n" + code + "\n}");
         await fn(scope);
@@ -311,6 +370,22 @@
       }
       send({ type: "update", pattern, mode: modeEl.value });
       setStatus("sent (" + modeEl.value + ")");
+      // The tracks the keys and the pads can play.
+      const labels = (pattern.tracks || []).map((track) => track.label || "_default");
+      for (const [el, first] of [[keysEl, null], [padsEl, "with the keys"]]) {
+        const chosen = el.value;
+        el.innerHTML = "";
+        for (const label of first ? ["", ...labels] : labels) {
+          const opt = document.createElement("option");
+          opt.value = label;
+          opt.textContent = label || first;
+          el.appendChild(opt);
+        }
+        if ([...el.options].some((o) => o.value === chosen)) el.value = chosen;
+      }
+      send({ type: "setKeyboardTrack", label: keysEl.value });
+      send({ type: "setPadsTrack", label: padsEl.value });
+      send({ type: "setGrid", grid: Number(gridEl.value) });
     }
 
     window.addEventListener("message", (event) => {
@@ -320,6 +395,32 @@
         setStatus("ready (click player to enable audio)");
       } else if (data.type === "loop") {
         setStatus("loop " + data.iteration + " @ beat " + data.beat);
+      } else if (data.type === "recording") {
+        recording = data.on;
+        recEl.textContent = data.on ? "Stop rec" : "Rec";
+        if (data.on) {
+          layers.push(JSON.parse(JSON.stringify(scope.recorded ?? {})));
+          setStatus(data.loop ? "recording a layer over the loop" : "recording: stop to set the loop");
+        } else {
+          setStatus("take written at the top of the editor");
+        }
+      } else if (data.type === "take") {
+        const before = layers.at(-1)?.[data.label] ?? { notes: [], cc: [] };
+        scope.recorded ??= {};
+        scope.recorded[data.label] = {
+          ...(data.loop || before.loop ? { loop: data.loop || before.loop } : {}),
+          notes: [...before.notes, ...data.notes],
+          cc: [...(before.cc || []), ...data.cc],
+        };
+        writeTakes();
+      } else if (data.type === "beat") {
+        // ● the beat now, · the others; then which bar of the loop
+        const dots = Array.from({ length: data.beats }, (_, k) => (k === data.beat ? "●" : "·")).join(" ");
+        beatEl.textContent = dots + (data.bars ? `   bar ${data.bar} of ${data.bars}` : "");
+      } else if (data.type === "midiIn") {
+        midiInEl.textContent = data.text;
+      } else if (data.type === "pedal") {
+        pedalEl.textContent = "Pedal: " + data.text;
       } else if (data.type === "midi") {
         const info = data.info || {};
         midiOutEl.innerHTML = "";
@@ -330,11 +431,9 @@
           if (name === info.selected) opt.selected = true;
           midiOutEl.appendChild(opt);
         }
-        if (!info.outputs || !info.outputs.length) {
-          setStatus("no MIDI outputs found");
-        } else {
-          setStatus("MIDI: " + info.selected);
-        }
+        const inputs = (info.inputs || []).length ? "keyboard: " + info.inputs.join(", ") : "no keyboard";
+        const output = (info.outputs || []).length ? "out: " + info.selected : "no MIDI out";
+        setStatus(inputs + " · " + output);
       }
     });
 
@@ -346,7 +445,8 @@
           STARTER_BUFFER = await r.text();
           // only replace the editor if it's empty or contains the original placeholder
           const cur = getCode().trim();
-          if (!cur) setCode(STARTER_BUFFER);
+          const saved = localStorage.getItem("jmon-live-repl");
+          if (!cur) setCode(saved?.trim() ? saved : STARTER_BUFFER);
         } else {
           console.warn('starter.txt fetch failed:', r.status);
         }
@@ -393,6 +493,19 @@
     document.getElementById("reset").addEventListener("click", () => send({ type: "reset" }));
     document.getElementById("midi").addEventListener("click", () => send({ type: "enableMidi" }));
     document.getElementById("load-demo").addEventListener("click", loadDemo);
+    keysEl.addEventListener("change", () => send({ type: "setKeyboardTrack", label: keysEl.value }));
+    recEl.addEventListener("click", () => send(recording ? { type: "stopRecord" } : { type: "record" }));
+    padsEl.addEventListener("change", () => send({ type: "setPadsTrack", label: padsEl.value }));
+    clickEl.addEventListener("change", () => send({ type: "setClick", on: clickEl.checked }));
+    gridEl.addEventListener("change", () => send({ type: "setGrid", grid: Number(gridEl.value) }));
+    pedalEl.addEventListener("click", () => { pedalEl.textContent = "Pedal: hit a pad…"; send({ type: "learnPedal" }); });
+    // Undo: `recorded` as it was before the last take, and the player follows.
+    document.getElementById("undo").addEventListener("click", () => {
+      if (recording || !layers.length) return;
+      scope.recorded = layers.pop();
+      writeTakes();
+      run();
+    });
     midiOutEl.addEventListener("change", (e) => {
       if (e.target.value) send({ type: "setMidiOutput", output: e.target.value });
     });

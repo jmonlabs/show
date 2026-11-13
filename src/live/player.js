@@ -13,13 +13,18 @@
 // behind it — so a track sounds identical live and offline.
 
 import { Session } from "./session.js";
-import { createTrackSynth } from "../synth-factory.js";
+import { createTrackSynth, finishNote } from "../synth-factory.js";
 import { ccStepsFor } from "./sink.js";
 
 // Tone.js — ESM build via jsDelivr (matches the rest of algo). Tone's ESM
 // build exposes Transport via getTransport() rather than as a namespace
 // property, so we normalize once and use `Tone.Transport` throughout.
 import * as ToneRaw from "https://cdn.jsdelivr.net/npm/tone@14.8.49/+esm";
+// `?rate=22050` in the page address runs the sound at that sample rate: half
+// the computing of 44100, for a machine that crackles, a little less treble.
+const rate = Number(new URLSearchParams(location.search).get("rate"));
+// The context is made by the same class as Tone's own, so Tone treats it as its own.
+if (rate > 0) ToneRaw.setContext(new ToneRaw.Context(new (ToneRaw.getContext().rawContext.constructor)({ sampleRate: rate })));
 const Tone = ToneRaw.Transport
   ? ToneRaw
   : Object.assign({}, ToneRaw, {
@@ -37,9 +42,16 @@ const Tone = ToneRaw.Transport
 // fetched the same way Tone is. Optional on purpose: if it cannot be reached,
 // a track asking for a GM program falls back to a synth rather than the whole
 // player failing to start.
+// `?local` in the page address takes io and sound from this disk, next to
+// show in the jmon folder, instead of their published versions.
+const local = new URLSearchParams(location.search).has("local");
+const packageUrl = (name) => local
+  ? new URL(`../../../${name}/src/index.js`, import.meta.url).href
+  : `https://cdn.jsdelivr.net/gh/jmonlabs/${name}@main/src/index.js`;
+
 let io = null;
 try {
-  const mod = await import("https://cdn.jsdelivr.net/gh/jmonlabs/io@main/src/index.js");
+  const mod = await import(packageUrl("io"));
   io = mod.default || mod;
 } catch (e) {
   console.error("jmon/io is required to read a piece.", e);
@@ -49,7 +61,7 @@ const { tempoSegments, automationChannels, parseAutomationTarget, timeSignatureS
 
 let sound = null;
 try {
-  const mod = await import("https://cdn.jsdelivr.net/gh/jmonlabs/sound@main/src/index.js");
+  const mod = await import(packageUrl("sound"));
   sound = mod.default || mod;
 } catch (e) {
   console.warn("jmon/sound unavailable — General MIDI tracks will use a synth.", e);
@@ -62,6 +74,15 @@ const positionEl = document.getElementById("position");
 const enableAudioBtn = document.getElementById("enable-audio");
 
 const session = new Session();
+
+// The pattern as written. The session plays it performed: each ison track's
+// notes go through its instrument's recipe first (its layers, its bow strokes,
+// its variants), as they do in a rendered piece.
+let written = null;
+function setSessionPattern(pattern, resetPosition) {
+  written = pattern;
+  session.setPattern(typeof sound?.performPiece === "function" ? sound.performPiece(pattern) : pattern, resetPosition);
+}
 
 // One synth per track label, lazily created via createTrackSynth.
 const trackSynths = new Map();
@@ -113,6 +134,12 @@ let currentIteration = 0;
 // Web MIDI state
 let midiAccess = null;
 let midiOutput = null;
+let keyboardLabel = null; // the track a MIDI keyboard plays; the first track if null
+let padsLabel = null; // the track the pads play; the keys' track if null
+let take = null; // the keyboard take being recorded, if any
+let grid = 0; // quarter notes the recorded notes snap to; 0: as played
+let pedal = null; // the pad that starts and stops recording: { channel, note }, or "learn"
+let loopStart = 0; // the beat where the current loop started
 
 // Fire the loop boundary callback this many beats before the boundary, so the
 // next iteration's events are scheduled with a comfortable lookahead.
@@ -224,7 +251,7 @@ async function prepareStaging(tracks) {
     const label = track.label || "_default";
     const tag = synthSpecTag(track.synth);
     if (trackSynthTags.get(label) === tag) continue; // unchanged — reuse active
-    const { synth, loaded } = buildTrackSynth(label, track.synth);
+    const { synth, loaded } = buildTrackSynth(label, playedModes(track));
     stagingSynths.set(label, synth);
     stagingSynthTags.set(label, tag);
     pending.push(loaded);
@@ -233,6 +260,22 @@ async function prepareStaging(tracks) {
   // Race the load against a timeout so a stuck CDN can't hang the player.
   const timeout = new Promise((r) => setTimeout(r, SAMPLE_LOAD_TIMEOUT_MS));
   await Promise.race([Promise.all(pending).catch(() => {}), timeout]);
+}
+
+// An ison with only the modes the track plays: its own mode, the modes its
+// notes ask for once performed, and their layers. Every mode of an ison is a
+// sound that runs whether it plays or not (a Faust one costs a lot), so the
+// others are left out.
+function playedModes(track) {
+  const spec = track.synth;
+  if (spec?.format !== "ison" || !spec.modes) return spec;
+  const names = Object.keys(spec.modes);
+  const base = spec.mode ?? names[0];
+  const keep = new Set([base]);
+  const performed = sound?.performPiece?.({ tempo: written?.tempo ?? 120, tracks: [track] })?.tracks?.[0]?.notes ?? [];
+  for (const note of performed) if (note?.variant) keep.add(note.variant);
+  for (const name of [...keep]) for (const layer of spec.modes[name]?.layers ?? []) keep.add(layer.mode);
+  return { ...spec, mode: base, modes: Object.fromEntries(names.filter((n) => keep.has(n)).map((n) => [n, spec.modes[n]])) };
 }
 
 // Move staging → active. Old active synths get disposed (their panners
@@ -278,10 +321,22 @@ function playAudioNote(note, time) {
   // Dropping the note is the same trade getSynth's fallback path makes:
   // brief silence on this track instead of an error per scheduled note.
   if (synth.loaded === false) return;
-  const pitch = toToneNote(note.pitch);
   const duration = note.duration || "8n";
   const velocity = note.velocity ?? 0.8;
-  synth.triggerAttackRelease(pitch, duration, time, velocity);
+  // The mode of an ison, or another preset of a SoundFont, if the note names one.
+  const playing = { variant: note.variant };
+  // By name: a note's few cents of `tuning` (an ison layer's spread) are left out.
+  const pitch = toToneNote(note.pitch);
+  // A sampled instrument plays attack and release apart, so it can hold a
+  // note longer than its recording (see finishNote).
+  const sampled = typeof note.pitch === "number" && !!(sound?.handlesVoices ?? sound?.canResample)?.(synth);
+  if (!sampled) {
+    synth.triggerAttackRelease(pitch, duration, time, velocity, playing);
+    return;
+  }
+  const seconds = session.quarterNotesToSeconds(session.parseDuration(duration));
+  synth.triggerAttack(pitch, time, velocity, seconds, playing);
+  finishNote(synth, sound, { name: pitch, midi: Math.round(note.pitch), time, seconds, velocity, loopSustain: false, loudness: null });
 }
 
 function playMidiNote(note, time) {
@@ -365,8 +420,10 @@ function scheduleIteration(startBeat) {
   // Automation is re-armed for every iteration, so its curve repeats with the
   // loop the way the notes do — and so do a track's control changes, for the same
   // reason. A sweep that ran once would leave the plugin wherever it stopped.
+  loopStart = startBeat;
   applyAutomation(session.pattern, startBeat);
   scheduleTrackControls(session.tracks, startBeat);
+  scheduleInstrumentControls(session.tracks, startBeat);
 
   const boundary = startBeat + loopDur;
   const triggerAt = Math.max(startBeat, boundary - LOOKAHEAD_BEATS);
@@ -375,11 +432,12 @@ function scheduleIteration(startBeat) {
       // Staging samplers finished loading before applyPattern returned, so
       // promotion is just a cache swap here (no waiting).
       promoteStaging();
-      session.setPattern(pendingPattern, true);
+      setSessionPattern(pendingPattern, true);
       syncTrackPans();
       pendingPattern = null;
       pendingMode = null;
     }
+    if (take?.loop) applyTake(); // the pass just played is heard on the next
     currentIteration++;
     if (positionEl) positionEl.textContent = `loop ${currentIteration}`;
     emitLoopEvent(currentIteration, boundary, time);
@@ -414,7 +472,7 @@ function scheduleBarSwap() {
     pendingBarSwapId = null;
     if (pendingPattern && pendingMode === "next-bar") {
       promoteStaging();
-      session.setPattern(pendingPattern, true);
+      setSessionPattern(pendingPattern, true);
       syncTrackPans();
       pendingPattern = null;
       pendingMode = null;
@@ -598,7 +656,7 @@ async function applyPattern(pattern, mode) {
 
   if (swapNow) {
     promoteStaging();
-    session.setPattern(pattern, true);
+    setSessionPattern(pattern, true);
     syncTrackPans();
     if (audioStarted) restartScheduling();
     setStatus(audioStarted ? "playing" : "ready (click to enable audio)");
@@ -620,6 +678,27 @@ async function applyPattern(pattern, mode) {
   setStatus(`queued (${pendingMode})`);
 }
 
+// --- Metronome ---
+// Every beat, the REPL is told where it is (the beat in the bar, the bar in the
+// loop) to light it up; with `click` on, it is also heard: a higher tick on
+// the first beat of the bar.
+let click = false;
+let clickSynth = null;
+Tone.Transport.scheduleRepeat((time) => {
+  const beat = Math.round(Tone.Transport.getTicksAtTime(time) / Tone.Transport.PPQ);
+  const perBar = session.beatsPerBar || 4;
+  const loop = session.loopDuration || 0;
+  const inLoop = loop ? ((((beat - loopStart) % loop) + loop) % loop) : beat;
+  const inBar = Math.round(inLoop) % perBar;
+  if (click) {
+    clickSynth ??= new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.04, sustain: 0, release: 0.01 }, volume: -12 }).toDestination();
+    clickSynth.triggerAttackRelease(inBar === 0 ? "C6" : "G5", 0.03, time);
+  }
+  (ToneRaw.getDraw?.() ?? Tone.Draw).schedule(() => {
+    window.parent.postMessage({ type: "beat", beat: inBar, beats: perBar, bar: Math.floor(inLoop / perBar) + 1, bars: loop ? Math.ceil(loop / perBar) : 0 }, "*");
+  }, time);
+}, "4n", 0);
+
 async function enableAudio() {
   if (audioStarted) return;
   await Tone.start();
@@ -638,6 +717,10 @@ async function enableMidi(preferredOutputName) {
   }
   if (!midiAccess) {
     midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+    for (const input of midiAccess.inputs.values()) input.onmidimessage = onKeyboard;
+    midiAccess.onstatechange = (event) => {
+      if (event.port.type === "input") event.port.onmidimessage = onKeyboard;
+    };
   }
   const outputs = Array.from(midiAccess.outputs.values());
   const previousOutput = midiOutput;
@@ -655,8 +738,149 @@ async function enableMidi(preferredOutputName) {
   }
   return {
     selected: midiOutput ? midiOutput.name : null,
-    outputs: outputs.map((o) => o.name)
+    outputs: outputs.map((o) => o.name),
+    inputs: Array.from(midiAccess.inputs.values()).map((i) => i.name)
   };
+}
+
+// A MIDI keyboard plays one track's instrument, live: its keys, its knobs and
+// faders (controllers, which an ison's named controls hear), its pitch bend.
+function keyboardTrack() {
+  return keyboardLabel ?? session.pattern?.tracks?.[0]?.label ?? "_default";
+}
+
+// Where the transport is right now, in beats: the moment a key is heard.
+function nowBeat() {
+  return Tone.Transport.getTicksAtTime(Tone.immediate()) / Tone.Transport.PPQ;
+}
+
+// What a MIDI message says, in words, for the REPL to show.
+function describeMidi(kind, channel, data1, data2) {
+  const on = `channel ${channel + 1}`;
+  if (kind === 0x90 && data2 > 0) return `note ${data1} (${Tone.Frequency(data1, "midi").toNote()}), velocity ${data2}, ${on}`;
+  if (kind === 0x80 || kind === 0x90) return `note ${data1} released, ${on}`;
+  if (kind === 0xb0) return `CC ${data1}: ${data2}, ${on}`;
+  if (kind === 0xe0) return `bend ${(((data2 << 7) + data1 - 8192) / 8192).toFixed(2)}, ${on}`;
+  if (kind === 0xd0) return `pressure ${data1}, ${on}`;
+  if (kind === 0xa0) return `pressure ${data2} on note ${data1}, ${on}`;
+  return `message ${kind.toString(16)}`;
+}
+
+function onKeyboard(event) {
+  const [status, data1, data2] = event.data;
+  const kind = status & 0xf0;
+  const channel = status & 0x0f;
+  if (kind < 0x80 || kind === 0xf0) return; // the clock and other system messages
+  window.parent.postMessage({ type: "midiIn", text: describeMidi(kind, channel, data1, data2) }, "*");
+
+  // The pedal: a pad (or key) that starts and stops the recording.
+  const pressed = kind === 0x90 && data2 > 0;
+  if (pedal === "learn" && pressed) {
+    pedal = { channel, note: data1 };
+    window.parent.postMessage({ type: "pedal", text: `note ${data1}, channel ${channel + 1}` }, "*");
+    return;
+  }
+  if (pedal?.note === data1 && pedal.channel === channel && (kind === 0x90 || kind === 0x80)) {
+    if (pressed) take ? stopTake() : startTake();
+    return;
+  }
+
+  if (!audioStarted) return;
+  // The pads send on channel 10, the drums channel of MIDI.
+  const label = channel === 9 && padsLabel ? padsLabel : keyboardTrack();
+  const synth = trackSynths.get(label);
+  if (!synth) return;
+  const now = Tone.immediate();
+  const note = Tone.Frequency(data1, "midi").toNote();
+  let heard = null;
+  if (pressed) {
+    synth.triggerAttack(note, now, data2 / 127);
+    heard = { type: "on", pitch: data1, velocity: data2 / 127 };
+  } else if (kind === 0x80 || kind === 0x90) {
+    synth.triggerRelease(note, now);
+    heard = { type: "off", pitch: data1 };
+  } else if (kind === 0xb0) {
+    synth.controllerChange?.(data1, data2 / 127, now);
+    heard = { type: "cc", controller: data1, value: data2 / 127 };
+  } else if (kind === 0xe0) {
+    const value = ((data2 << 7) + data1 - 8192) / 8192;
+    synth.pitchBend?.(value, now);
+    heard = { type: "pitchBend", value };
+  }
+  if (take && heard) {
+    const beat = nowBeat();
+    // A take with nothing playing starts on its first note: it is at time 0.
+    if (take.start === null && heard.type === "on") take.start = beat;
+    take.events.push({ label, beat, ...heard });
+  }
+}
+
+// --- Recording ---
+// Like a loop pedal. With nothing playing, a take starts on its first note,
+// and stopping it sets the loop: as long as the take, to the nearest beat,
+// and it plays again at once. Over a running loop, a take folds into it and
+// each pass is heard on the next one: the layers stack. Every track the take
+// played into (the keys', the pads') gets its notes.
+function startTake() {
+  const loop = session.loopDuration || 0;
+  take = { loop, start: loop ? loopStart : null, events: [], base: new Map() };
+  for (const t of written?.tracks || []) {
+    take.base.set(t.label || "_default", { notes: [...(t.notes || [])], cc: [...(t.cc || [])] });
+  }
+  window.parent.postMessage({ type: "recording", on: true, loop }, "*");
+}
+
+// The take so far, into its tracks: the notes they had, then the take's.
+// `length`, for a take that sets the loop, becomes the tracks' `loop`.
+function applyTake(length = 0) {
+  const start = take.start ?? take.events[0]?.beat ?? 0;
+  const changed = new Map();
+  for (const label of new Set(take.events.map((e) => e.label))) {
+    const events = take.events.filter((e) => e.label === label)
+      .map(({ beat, label: _, ...event }) => ({ ...event, time: beat - start }));
+    changed.set(label, io.format.recordedTrack(events, { grid, loop: take.loop, tempo: Tone.Transport.bpm.value }));
+  }
+  const tracks = written.tracks.map((t) => {
+    const label = t.label || "_default";
+    const recorded = changed.get(label);
+    if (!recorded) return t;
+    const base = take.base.get(label) ?? { notes: [], cc: [] };
+    return { ...t, notes: [...base.notes, ...recorded.notes], cc: [...base.cc, ...recorded.cc], ...(length ? { loop: length } : {}) };
+  });
+  setSessionPattern({ ...written, tracks }, false);
+  for (const [label, recorded] of changed) {
+    window.parent.postMessage({ type: "take", label, ...recorded, ...(length ? { loop: length } : {}) }, "*");
+  }
+}
+
+function stopTake() {
+  if (!take) return;
+  const straight = !take.loop;
+  const length = straight && take.start !== null ? Math.max(1, Math.round(nowBeat() - take.start)) : 0;
+  applyTake(length);
+  take = null;
+  window.parent.postMessage({ type: "recording", on: false }, "*");
+  if (length && audioStarted) { // the take is the loop now, from this moment
+    clearAllScheduled();
+    currentIteration = 0;
+    scheduleIteration(currentTransportBeats() + 0.01);
+  }
+}
+
+// Each audio track's controller moves (its `cc` steps, the bends inside its
+// notes), sent to its instrument once per loop, like its notes.
+function scheduleInstrumentControls(tracks, startBeat) {
+  (tracks || []).forEach((track, index) => {
+    if (Number.isInteger(track.midiChannel)) return;
+    const label = track.label || "_default";
+    for (const move of io.format.controllerEvents(track, session.pattern, index)) {
+      scheduledIds.push(Tone.Transport.schedule((time) => {
+        const synth = trackSynths.get(label);
+        if (move.type === "cc") synth?.controllerChange?.(move.controller, move.value, time);
+        else if (move.type === "pitchBend") synth?.pitchBend?.(move.value, time);
+      }, beatsToTicks(startBeat + move.time)));
+    }
+  });
 }
 
 // --- Message handling ---
@@ -705,6 +929,27 @@ window.addEventListener("message", async (event) => {
       window.parent.postMessage({ type: "midi", info }, "*");
       break;
     }
+    case "record":
+      if (!take) startTake();
+      break;
+    case "setClick":
+      click = !!data.on;
+      break;
+    case "setGrid":
+      grid = Number(data.grid) || 0;
+      break;
+    case "setPadsTrack":
+      padsLabel = data.label || null;
+      break;
+    case "learnPedal":
+      pedal = "learn";
+      break;
+    case "stopRecord":
+      stopTake();
+      break;
+    case "setKeyboardTrack":
+      keyboardLabel = data.label || null;
+      break;
     case "setMidiOutput": {
       const info = await enableMidi(data.output);
       window.parent.postMessage({ type: "midi", info }, "*");

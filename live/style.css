@@ -121,3 +121,6 @@ h1, h2 {
     h1 { font-size: 18px; }
     .status-item { font-size: 12px; }
 }
+
+/* A sideways swipe on a trackpad scrolls nothing here, rather than going back a page. */
+html, body { overscroll-behavior-x: none; }

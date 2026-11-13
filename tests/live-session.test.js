@@ -187,3 +187,15 @@ test("a Session plays into any sink, on a clock the caller owns", async () => {
   assert.deepEqual(off, [60, 64], "stopping releases everything still held");
   assert.equal(transport.pending(), 0);
 });
+
+test("a track that says its loop length makes the pattern that long", () => {
+  const session = new Session();
+  session.setPattern({ format: "jmon", tracks: [{ label: "piano", loop: "2:0:0", notes: [{ pitch: 60, time: 0, duration: 1 }] }] });
+  assert.equal(session.loopDuration, 8);
+});
+
+test("a loop set by its length may end between bars", () => {
+  const session = new Session();
+  session.setPattern({ format: "jmon", tracks: [{ label: "piano", loop: 7, notes: [{ pitch: 60, time: 6, duration: 2 }] }] });
+  assert.equal(session.loopDuration, 7);
+});

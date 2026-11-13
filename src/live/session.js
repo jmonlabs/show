@@ -73,14 +73,24 @@ export class Session {
 
         // Calculate total loop duration as the latest end across all notes,
         // then round up to the next bar so the pattern aligns to the metric grid.
+        // A track that says how long its loop is (`loop: "2:0:0"`, or a number
+        // of beats) is that long, so a loop may end on a rest or between bars.
         if (this.flattenedNotes.length > 0) {
+            const declared = new Map();
+            for (const track of this.tracks || []) {
+                if (typeof track.loop !== 'string' && typeof track.loop !== 'number') continue;
+                const length = this.trackLoopLength(track, 0);
+                if (length > 0) declared.set(track.label, length);
+            }
             let latestEnd = 0;
             for (const note of this.flattenedNotes) {
+                if (declared.has(note.trackLabel)) continue;
                 const end = note.time + this.parseDuration(note.duration);
                 if (end > latestEnd) latestEnd = end;
             }
             const bpb = this.beatsPerBar || 4;
-            this.loopDuration = Math.max(bpb, Math.ceil(latestEnd / bpb) * bpb);
+            this.loopDuration = latestEnd > 0 ? Math.max(bpb, Math.ceil(latestEnd / bpb) * bpb) : 0;
+            for (const length of declared.values()) this.loopDuration = Math.max(this.loopDuration, length);
         } else {
             this.loopDuration = 0;
         }
